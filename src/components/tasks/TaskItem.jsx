@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import { useData } from "../providers/DataProvider";
 
 const priorityColors = {

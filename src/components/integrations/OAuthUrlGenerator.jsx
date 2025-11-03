@@ -70,7 +70,7 @@ export default function OAuthUrlGenerator() {
               id="redirectUri"
               value={redirectUri}
               onChange={(e) => setRedirectUri(e.target.value)}
-              placeholder="https://your-app.base44.com/auth/google/callback"
+              placeholder="https://your-app.timelit.com/auth/google/callback"
               className="mt-2"
             />
             <p className="text-xs text-muted-foreground mt-1">

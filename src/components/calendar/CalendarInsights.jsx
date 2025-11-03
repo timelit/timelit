@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { format, startOfDay, endOfDay, isWithinInterval, addDays, isBefore, startOfToday, subDays, isToday } from "date-fns";
 import { useData } from "../providers/DataProvider";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import { toast } from "sonner";
 
 const getRefreshInterval = (rate) => {
@@ -49,7 +49,7 @@ function PomodoroWidget({ dragHandleProps }) {
     const loadTodayData = async () => {
       if (!user) return;
       const today = format(new Date(), 'yyyy-MM-dd');
-      const sessions = await base44.entities.PomodoroSession.filter({
+      const sessions = await timelit.entities.PomodoroSession.filter({
         created_by: user.email,
         date: today
       });
@@ -68,18 +68,18 @@ function PomodoroWidget({ dragHandleProps }) {
 
     if (user) {
       const today = format(new Date(), 'yyyy-MM-dd');
-      const sessions = await base44.entities.PomodoroSession.filter({
+      const sessions = await timelit.entities.PomodoroSession.filter({
         created_by: user.email,
         date: today
       });
 
       if (sessions.length > 0) {
-        await base44.entities.PomodoroSession.update(sessions[0].id, {
+        await timelit.entities.PomodoroSession.update(sessions[0].id, {
           cycles_completed: newCycles,
           total_focus_time: (sessions[0].total_focus_time || 0) + 25
         });
       } else {
-        await base44.entities.PomodoroSession.create({
+        await timelit.entities.PomodoroSession.create({
           date: today,
           cycles_completed: newCycles,
           total_focus_time: 25,
@@ -161,7 +161,7 @@ function MoodTrackerWidget({ dragHandleProps }) {
     const loadTodayMood = async () => {
       if (!user) return;
       const today = format(new Date(), 'yyyy-MM-dd');
-      const entries = await base44.entities.MoodEntry.filter({
+      const entries = await timelit.entities.MoodEntry.filter({
         created_by: user.email,
         date: today
       });
@@ -176,15 +176,15 @@ function MoodTrackerWidget({ dragHandleProps }) {
     if (!user) return;
     const today = format(new Date(), 'yyyy-MM-dd');
 
-    const entries = await base44.entities.MoodEntry.filter({
+    const entries = await timelit.entities.MoodEntry.filter({
       created_by: user.email,
       date: today
     });
 
     if (entries.length > 0) {
-      await base44.entities.MoodEntry.update(entries[0].id, { rating });
+      await timelit.entities.MoodEntry.update(entries[0].id, { rating });
     } else {
-      await base44.entities.MoodEntry.create({
+      await timelit.entities.MoodEntry.create({
         date: today,
         rating,
         created_by: user.email
@@ -663,7 +663,7 @@ ${relevantData.tasks.slice(0, 5).map(t => {
 Return ONLY a JSON object with keys: focus, freeTime, workload. Keep responses concise and actionable.`;
 
         const response = await Promise.race([
-          base44.integrations.Core.InvokeLLM({
+          timelit.integrations.Core.InvokeLLM({
             prompt,
             response_json_schema: {
               type: "object",
@@ -749,7 +749,7 @@ Generate a concise, actionable insight (max 20 words) that directly addresses th
 Return a JSON object with a single key "insight" containing your response.`;
 
         const response = await Promise.race([
-          base44.integrations.Core.InvokeLLM({
+          timelit.integrations.Core.InvokeLLM({
             prompt: prompt,
             response_json_schema: {
               type: "object",

@@ -55,7 +55,7 @@ import {
   AreaChart
 } from 'recharts';
 import { useData } from '../components/providers/DataProvider';
-import { base44 } from '@/api/base44Client';
+import { timelit } from '@/api/timelitClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
@@ -389,7 +389,7 @@ Period: ${timeRange}
 
 Provide concise insights on: 1) Overall productivity, 2) Time allocation, 3) Task management, 4) Actionable recommendation`;
 
-      const response = await base44.integrations.Core.InvokeLLM({
+      const response = await timelit.integrations.Core.InvokeLLM({
         prompt,
         response_json_schema: {
           type: "object",

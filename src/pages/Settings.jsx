@@ -13,7 +13,7 @@ import {
   Settings as SettingsIcon, Layout, Monitor
 } from "lucide-react";
 import { toast } from "sonner";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import NotificationPermission from "../components/notifications/NotificationPermission";
 
 export default function SettingsPage() {
@@ -52,10 +52,10 @@ export default function SettingsPage() {
 
     setIsDeleting(true);
     try {
-      await base44.functions.invoke('deleteUserAccount');
+      await timelit.functions.deleteUserAccount();
       toast.success("Account deleted. Logging out...");
       setTimeout(() => {
-        base44.auth.logout();
+        timelit.auth.logout();
       }, 2000);
     } catch (error) {
       console.error("Failed to delete account:", error);

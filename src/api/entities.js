@@ -1,21 +1,21 @@
-import { base44 } from './base44Client';
+import { timelit } from './timelitClient';
 
 
-export const Event = base44.entities.Event;
+export const Event = timelit.entities.Event;
 
-export const Task = base44.entities.Task;
+export const Task = timelit.entities.Task;
 
-export const UserPreferences = base44.entities.UserPreferences;
+export const UserPreferences = timelit.entities.UserPreferences;
 
-export const TaskList = base44.entities.TaskList;
+export const TaskList = timelit.entities.TaskList;
 
-export const TaskTag = base44.entities.TaskTag;
+export const TaskTag = timelit.entities.TaskTag;
 
-export const MoodEntry = base44.entities.MoodEntry;
+export const MoodEntry = timelit.entities.MoodEntry;
 
-export const PomodoroSession = base44.entities.PomodoroSession;
+export const PomodoroSession = timelit.entities.PomodoroSession;
 
 
 
 // auth sdk:
-export const User = base44.auth;
+export const User = timelit.auth;

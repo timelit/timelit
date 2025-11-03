@@ -6,7 +6,7 @@ import { Event } from "@/api/entities";
 import { Task } from "@/api/entities";
 import { TaskList } from "@/api/entities";
 import { TaskTag } from "@/api/entities";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import { TaskScheduler } from '../scheduling/TaskScheduler';
 import { toast } from "sonner";
 import { notificationManager } from "../notifications/NotificationManager";
@@ -396,7 +396,7 @@ Is this categorization correct? If not, which category fits better? Consider the
 Return ONLY a JSON object with: {"category": "correct_category", "confidence": "high/medium/low", "reason": "brief explanation"}`;
 
     const response = await Promise.race([
-      base44.integrations.Core.InvokeLLM({
+      timelit.integrations.Core.InvokeLLM({
         prompt,
         response_json_schema: {
           type: "object",
@@ -472,8 +472,8 @@ const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulk
           if (llmResult.changed) {
             // Re-fetch the item's current state to avoid overwriting newer changes
             const currentItem = item.itemType === 'event' 
-              ? (await base44.entities.Event.get(item.id)) 
-              : (await base44.entities.Task.get(item.id));
+              ? (await timelit.entities.Event.get(item.id)) 
+              : (await timelit.entities.Task.get(item.id));
 
             if (currentItem && (currentItem.category !== llmResult.category || currentItem.color !== llmResult.color)) {
               if (item.itemType === 'event') {
@@ -644,14 +644,14 @@ export function DataProvider({ children }) {
 
     try {
       if (preferences?.id) {
-        base44.entities.UserPreferences.update(preferences.id, newPrefs).then(() => {
+        timelit.entities.UserPreferences.update(preferences.id, newPrefs).then(() => {
           cache.invalidate(`preferences-${user.email}`);
         }).catch(err => {
           console.error('Background update preferences failed:', err);
           setPreferences(originalPreferences);
         });
       } else if (user?.email) {
-        const created = await base44.entities.UserPreferences.create({ ...newPrefs, created_by: user.email });
+        const created = await timelit.entities.UserPreferences.create({ ...newPrefs, created_by: user.email });
         setPreferences(created);
         cache.cache.set(`preferences-${user.email}`, [created]);
       }
@@ -668,7 +668,7 @@ export function DataProvider({ children }) {
     setEvents(prev => prev.map(e => e.id === eventId ? { ...e, ...updates } : e));
 
     try {
-      base44.entities.Event.update(eventId, updates).then(() => {
+      timelit.entities.Event.update(eventId, updates).then(() => {
         cache.invalidate(`events-${user.email}`);
       }).catch(err => {
         console.error('Background update event failed:', err);
@@ -714,7 +714,7 @@ export function DataProvider({ children }) {
     }));
 
     try {
-      base44.entities.Task.update(taskId, updates).then(() => {
+      timelit.entities.Task.update(taskId, updates).then(() => {
         cache.invalidate(`tasks-${user.email}`);
       }).catch(err => {
         console.error('Background update task failed:', err);
@@ -743,7 +743,7 @@ export function DataProvider({ children }) {
         if (linkedEvents.length > 0) {
           Promise.all(
             linkedEvents.map(event => 
-              base44.entities.Event.update(event.id, {
+              timelit.entities.Event.update(event.id, {
                 category: updates.category !== undefined ? updates.category : event.category,
                 color: updates.color !== undefined ? updates.color : event.color
               })
@@ -801,7 +801,7 @@ export function DataProvider({ children }) {
     setEvents(prev => [...tempEvents, ...prev]);
 
     try {
-      const newEvents = await base44.entities.Event.bulkCreate(eventDataArray.map(e => ({ ...e, created_by: user.email })));
+      const newEvents = await timelit.entities.Event.bulkCreate(eventDataArray.map(e => ({ ...e, created_by: user.email })));
       const tempIds = new Set(tempEvents.map(te => te.id));
       setEvents(prev => [...newEvents, ...prev.filter(e => !tempIds.has(e.id))]);
       cache.invalidate(`events-${user.email}`);
@@ -831,7 +831,7 @@ export function DataProvider({ children }) {
     setEvents(prev => [tempEvent, ...prev]);
 
     try {
-      const newEvent = await base44.entities.Event.create({ ...finalEventData, created_by: user.email });
+      const newEvent = await timelit.entities.Event.create({ ...finalEventData, created_by: user.email });
       
       setEvents(prev => prev.map(e => e.id === tempId ? newEvent : e));
       cache.invalidate(`events-${user.email}`);
@@ -869,7 +869,7 @@ export function DataProvider({ children }) {
     setTasks(prev => [tempTask, ...prev]);
 
     try {
-      const newTask = await base44.entities.Task.create({ ...finalTaskData, created_by: user.email });
+      const newTask = await timelit.entities.Task.create({ ...finalTaskData, created_by: user.email });
 
       setTasks(prev => prev.map(t => t.id === tempId ? newTask : t));
       cache.invalidate(`tasks-${user.email}`);
@@ -884,8 +884,8 @@ export function DataProvider({ children }) {
         setTimeout(async () => {
           try {
             // Fetch latest data for scheduling to ensure accuracy
-            const allCurrentEvents = await base44.entities.Event.filter({ created_by: user.email });
-            const allCurrentTasks = await base44.entities.Task.filter({ created_by: user.email });
+            const allCurrentEvents = await timelit.entities.Event.filter({ created_by: user.email });
+            const allCurrentTasks = await timelit.entities.Task.filter({ created_by: user.email });
             const scheduler = new TaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
             const result = scheduler.scheduleTask(newTask);
 

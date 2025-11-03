@@ -1,9 +1,9 @@
-import { base44 } from './base44Client';
+import { timelit } from './timelitClient';
 
 
-export const googleCalendarOAuth = base44.functions.googleCalendarOAuth;
+export const googleCalendarOAuth = timelit.functions.googleCalendarOAuth;
 
-export const googleCalendarWebhook = base44.functions.googleCalendarWebhook;
+export const googleCalendarWebhook = timelit.functions.googleCalendarWebhook;
 
-export const deleteUserAccount = base44.functions.deleteUserAccount;
+export const deleteUserAccount = timelit.functions.deleteUserAccount;
 

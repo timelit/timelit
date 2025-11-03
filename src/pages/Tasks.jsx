@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useData } from "../components/providers/DataProvider";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import TaskItem from "../components/tasks/TaskItem";
 import { startOfToday, endOfToday, addDays, endOfDay, parseISO, isWithinInterval, isPast, isBefore } from "date-fns";
 import {
@@ -113,8 +113,8 @@ export default function TasksPage() {
       if (!user) return;
       try {
         const [listsData, tagsData] = await Promise.all([
-          base44.entities.TaskList.filter({ created_by: user.email }),
-          base44.entities.TaskTag.filter({ created_by: user.email })
+          timelit.entities.TaskList.filter({ created_by: user.email }),
+          timelit.entities.TaskTag.filter({ created_by: user.email })
         ]);
         setLists(listsData || []);
         setTags(tagsData || []);
@@ -270,7 +270,7 @@ export default function TasksPage() {
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     try {
-      const newList = await base44.entities.TaskList.create({
+      const newList = await timelit.entities.TaskList.create({
         name: newListName,
         color: '#3b82f6',
         created_by: user.email
@@ -288,7 +288,7 @@ export default function TasksPage() {
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
     try {
-      const newTag = await base44.entities.TaskTag.create({
+      const newTag = await timelit.entities.TaskTag.create({
         name: newTagName,
         color: '#8b5cf6',
         created_by: user.email
@@ -306,7 +306,7 @@ export default function TasksPage() {
   const handleDeleteList = async (listId) => {
     if (!window.confirm("Are you sure you want to delete this list? Tasks associated with this list will NOT be deleted, but will become unassigned.")) return;
     try {
-      await base44.entities.TaskList.delete(listId);
+      await timelit.entities.TaskList.delete(listId);
       setLists(lists.filter(l => l.id !== listId));
       if (selectedListId === listId) {
         setActiveView('inbox');
@@ -322,7 +322,7 @@ export default function TasksPage() {
   const handleDeleteTag = async (tagId) => {
     if (!window.confirm("Are you sure you want to delete this tag? Tasks associated with this tag will NOT be deleted, but will become untagged.")) return;
     try {
-      await base44.entities.TaskTag.delete(tagId);
+      await timelit.entities.TaskTag.delete(tagId);
       setTags(tags.filter(t => t.id !== tagId));
       if (selectedTagId === tagId) {
         setActiveView('inbox');

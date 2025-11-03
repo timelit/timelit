@@ -1,5 +1,5 @@
-// Local API client to replace Base44 SDK
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Local API client for Timelit infrastructure
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class ApiClient {
   constructor() {
@@ -318,4 +318,4 @@ class ApiClient {
 }
 
 // Create and export the client instance
-export const base44 = new ApiClient();
+export const timelit = new ApiClient();

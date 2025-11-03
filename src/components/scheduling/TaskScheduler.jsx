@@ -1,4 +1,4 @@
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 
 export class TaskScheduler {
   constructor(events, tasks, preferences) {
