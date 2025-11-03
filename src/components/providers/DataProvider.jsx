@@ -534,7 +534,7 @@ export function DataProvider({ children }) {
       setIsUserLoading(true);
       setError(null);
 
-      const userData = await cache.get('current-user', () => User.me(), 600000);
+      const userData = await cache.get('current-user', () => User.getCurrentUser(), 600000);
       setUser(userData);
 
       if (userData) {

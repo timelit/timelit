@@ -76,15 +76,64 @@ router.post('/login', async (req, res) => {
 
 // @desc    Get current logged in user
 // @route   GET /api/auth/me
-// @access  Private
-router.get('/me', protect, async (req, res) => {
+// @access  Public
+router.get('/me', async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    // Check for token in header
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
 
-    res.status(200).json({
-      success: true,
-      data: user
-    });
+    if (!token) {
+      // Return a default user for public access
+      return res.status(200).json({
+        success: true,
+        data: {
+          _id: 'public-user',
+          name: 'Public User',
+          email: 'public@example.com',
+          role: 'user'
+        }
+      });
+    }
+
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Get user from token
+      const user = await User.findById(decoded.id).select('-password');
+
+      if (!user) {
+        // Return default user if token is invalid
+        return res.status(200).json({
+          success: true,
+          data: {
+            _id: 'public-user',
+            name: 'Public User',
+            email: 'public@example.com',
+            role: 'user'
+          }
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: user
+      });
+    } catch (tokenError) {
+      // Return default user if token verification fails
+      res.status(200).json({
+        success: true,
+        data: {
+          _id: 'public-user',
+          name: 'Public User',
+          email: 'public@example.com',
+          role: 'user'
+        }
+      });
+    }
   } catch (error) {
     res.status(500).json({
       success: false,

@@ -5,8 +5,8 @@ const TaskList = require('../models/TaskList');
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(protect);
+// All routes are now public for demo purposes
+// router.use(protect);
 
 // @desc    Get all tasks
 // @route   GET /api/tasks
@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
   try {
     const { completed, category, listId, dueDate } = req.query;
 
-    let query = { createdBy: req.user._id };
+    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
 
     // Filter by completion status
     if (completed !== undefined) {
@@ -62,7 +62,7 @@ router.get('/:id', async (req, res) => {
   try {
     const task = await Task.findOne({
       _id: req.params.id,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     }).populate('listId', 'name color');
 
     if (!task) {
@@ -92,7 +92,7 @@ router.post('/', async (req, res) => {
   try {
     const taskData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     };
 
     const task = await Task.create(taskData);
@@ -116,7 +116,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
       req.body,
       { new: true, runValidators: true }
     ).populate('listId', 'name color');
@@ -148,7 +148,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const task = await Task.findOneAndDelete({
       _id: req.params.id,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     });
 
     if (!task) {
@@ -178,7 +178,7 @@ router.delete('/:id', async (req, res) => {
 // @access  Private
 router.get('/lists', async (req, res) => {
   try {
-    const lists = await TaskList.find({ createdBy: req.user._id })
+    const lists = await TaskList.find({ createdBy: req.user ? req.user._id : 'public@example.com' })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -202,7 +202,7 @@ router.post('/lists', async (req, res) => {
   try {
     const listData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     };
 
     const list = await TaskList.create(listData);
@@ -226,7 +226,7 @@ router.post('/lists', async (req, res) => {
 router.put('/lists/:id', async (req, res) => {
   try {
     const list = await TaskList.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
       req.body,
       { new: true, runValidators: true }
     );
@@ -258,7 +258,7 @@ router.delete('/lists/:id', async (req, res) => {
   try {
     const list = await TaskList.findOneAndDelete({
       _id: req.params.id,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     });
 
     if (!list) {

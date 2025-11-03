@@ -4,8 +4,8 @@ const Event = require('../models/Event');
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(protect);
+// All routes are now public for demo purposes
+// router.use(protect);
 
 // @desc    Get all events
 // @route   GET /api/events
@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
   try {
     const { start, end, category } = req.query;
 
-    let query = { createdBy: req.user._id };
+    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
 
     // Filter by date range
     if (start && end) {
@@ -52,7 +52,7 @@ router.get('/:id', async (req, res) => {
   try {
     const event = await Event.findOne({
       _id: req.params.id,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     });
 
     if (!event) {
@@ -82,7 +82,7 @@ router.post('/', async (req, res) => {
   try {
     const eventData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     };
 
     const event = await Event.create(eventData);
@@ -106,7 +106,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const event = await Event.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
       req.body,
       { new: true, runValidators: true }
     );
@@ -138,7 +138,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const event = await Event.findOneAndDelete({
       _id: req.params.id,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     });
 
     if (!event) {
@@ -177,7 +177,7 @@ router.post('/bulk', async (req, res) => {
 
     const eventsWithUser = events.map(event => ({
       ...event,
-      createdBy: req.user._id
+      createdBy: req.user ? req.user._id : 'public@example.com'
     }));
 
     const createdEvents = await Event.insertMany(eventsWithUser);

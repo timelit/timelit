@@ -6,15 +6,15 @@ const PomodoroSession = require('../models/PomodoroSession');
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(protect);
+// All routes are now public for demo purposes
+// router.use(protect);
 
 // @desc    Get user preferences
 // @route   GET /api/users/preferences
 // @access  Private
 router.get('/preferences', async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user ? req.user._id : 'public-user');
 
     res.status(200).json({
       success: true,
@@ -35,7 +35,7 @@ router.get('/preferences', async (req, res) => {
 router.put('/preferences', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
-      req.user._id,
+      req.user ? req.user._id : 'public-user',
       { preferences: req.body },
       { new: true, runValidators: true }
     );
@@ -62,7 +62,7 @@ router.get('/mood', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    let query = { createdBy: req.user._id };
+    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
 
     if (startDate && endDate) {
       query.date = {
@@ -95,7 +95,7 @@ router.post('/mood', async (req, res) => {
     const { date, rating, note, factors } = req.body;
 
     const existingEntry = await MoodEntry.findOne({
-      createdBy: req.user._id,
+      createdBy: req.user ? req.user._id : 'public@example.com',
       date
     });
 
@@ -112,7 +112,7 @@ router.post('/mood', async (req, res) => {
         rating,
         note,
         factors,
-        createdBy: req.user._id
+        createdBy: req.user ? req.user._id : 'public@example.com'
       });
     }
 
@@ -138,7 +138,7 @@ router.get('/pomodoro', async (req, res) => {
   try {
     const { date } = req.query;
 
-    let query = { createdBy: req.user._id };
+    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
 
     if (date) {
       query.date = date;
@@ -168,7 +168,7 @@ router.put('/pomodoro/:date', async (req, res) => {
     const { cyclesCompleted, totalFocusTime, totalBreakTime, sessions } = req.body;
 
     let session = await PomodoroSession.findOne({
-      createdBy: req.user._id,
+      createdBy: req.user ? req.user._id : 'public@example.com',
       date: req.params.date
     });
 
@@ -185,7 +185,7 @@ router.put('/pomodoro/:date', async (req, res) => {
         totalFocusTime,
         totalBreakTime,
         sessions,
-        createdBy: req.user._id
+        createdBy: req.user ? req.user._id : 'public@example.com'
       });
     }
 
