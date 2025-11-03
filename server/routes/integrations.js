@@ -2,6 +2,8 @@ const express = require('express');
 const { protect } = require('../middleware/auth');
 const OpenAI = require('openai');
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -12,6 +14,23 @@ router.use(protect);
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+// Helper function to get Google Calendar client
+const getGoogleCalendarClient = (tokens) => {
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/calendar/callback`
+  );
+
+  oauth2Client.setCredentials({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expiry_date: tokens.expiry_date
+  });
+
+  return google.calendar({ version: 'v3', auth: oauth2Client });
+};
 
 // @desc    Invoke LLM
 // @route   POST /api/integrations/llm
@@ -195,6 +214,169 @@ router.post('/extract-data', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Data extraction error',
+      error: error.message
+    });
+  }
+});
+
+// @desc    Disconnect Google Calendar
+// @route   POST /api/integrations/google-calendar/disconnect
+// @access  Private
+router.post('/google-calendar/disconnect', async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(req.user._id, {
+      googleCalendarTokens: null,
+      googleCalendarIntegrated: false,
+      googleCalendarSyncEnabled: false,
+      lastGoogleCalendarSync: null
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Google Calendar disconnected successfully'
+    });
+  } catch (error) {
+    console.error('Disconnect error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to disconnect Google Calendar',
+      error: error.message
+    });
+  }
+});
+
+// @desc    Sync Google Calendar
+// @route   POST /api/integrations/google-calendar/sync
+// @access  Private
+router.post('/google-calendar/sync', async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user.googleCalendarTokens) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google Calendar not connected'
+      });
+    }
+
+    const calendar = getGoogleCalendarClient(user.googleCalendarTokens);
+
+    // Get upcoming events from Google Calendar
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: new Date().toISOString(),
+      maxResults: 10,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+
+    // Update last sync time
+    await User.findByIdAndUpdate(req.user._id, {
+      lastGoogleCalendarSync: new Date()
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        events: response.data.items,
+        syncedAt: new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync Google Calendar',
+      error: error.message
+    });
+  }
+});
+
+// @desc    Get Google Calendar events
+// @route   GET /api/integrations/google-calendar/events
+// @access  Private
+router.get('/google-calendar/events', async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user.googleCalendarTokens) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google Calendar not connected'
+      });
+    }
+
+    const calendar = getGoogleCalendarClient(user.googleCalendarTokens);
+    const { timeMin, timeMax, maxResults = 250 } = req.query;
+
+    const response = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: timeMin || new Date().toISOString(),
+      timeMax,
+      maxResults: parseInt(maxResults),
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+
+    res.status(200).json({
+      success: true,
+      data: response.data.items
+    });
+  } catch (error) {
+    console.error('Get events error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get Google Calendar events',
+      error: error.message
+    });
+  }
+});
+
+// @desc    Create event in Google Calendar
+// @route   POST /api/integrations/google-calendar/events
+// @access  Private
+router.post('/google-calendar/events', async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user.googleCalendarTokens) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google Calendar not connected'
+      });
+    }
+
+    const calendar = getGoogleCalendarClient(user.googleCalendarTokens);
+    const { summary, description, start, end, location } = req.body;
+
+    const event = {
+      summary,
+      description,
+      start: {
+        dateTime: start,
+        timeZone: 'UTC'
+      },
+      end: {
+        dateTime: end,
+        timeZone: 'UTC'
+      },
+      location
+    };
+
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      resource: event
+    });
+
+    res.status(201).json({
+      success: true,
+      data: response.data
+    });
+  } catch (error) {
+    console.error('Create event error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create Google Calendar event',
       error: error.message
     });
   }

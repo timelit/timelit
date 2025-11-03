@@ -3,6 +3,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const passport = require('passport');
+// Load environment variables
+dotenv.config();
+
+// Passport configuration
+require('./passport-config');
 
 // Load environment variables
 dotenv.config();

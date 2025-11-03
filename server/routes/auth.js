@@ -203,4 +203,41 @@ router.get('/google/callback',
   }
 );
 
+// Google Calendar OAuth routes
+router.get('/google/calendar',
+  passport.authenticate('google-calendar', {
+    scope: ['https://www.googleapis.com/auth/calendar.readonly', 'https://www.googleapis.com/auth/calendar.events'],
+    accessType: 'offline',
+    prompt: 'consent'
+  })
+);
+
+router.get('/google/calendar/callback',
+  passport.authenticate('google-calendar', { failureRedirect: '/preferences' }),
+  async (req, res) => {
+    try {
+      // Store the tokens in user preferences or separate integration model
+      const user = req.user;
+      const tokens = req.authInfo;
+
+      // Update user with Google Calendar tokens
+      await User.findByIdAndUpdate(user._id, {
+        googleCalendarTokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expiry_date: tokens.expiry_date
+        },
+        googleCalendarIntegrated: true,
+        lastGoogleCalendarSync: new Date()
+      });
+
+      // Redirect back to preferences page
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/preferences?tab=integrations&calendar=connected`);
+    } catch (error) {
+      console.error('Google Calendar OAuth callback error:', error);
+      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/preferences?tab=integrations&calendar=error`);
+    }
+  }
+);
+
 module.exports = router;

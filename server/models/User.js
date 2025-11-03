@@ -34,6 +34,14 @@ const userSchema = new mongoose.Schema({
       end: { type: String, default: '17:00' }
     }
   },
+  googleCalendarTokens: {
+    access_token: { type: String },
+    refresh_token: { type: String },
+    expiry_date: { type: Number }
+  },
+  googleCalendarIntegrated: { type: Boolean, default: false },
+  googleCalendarSyncEnabled: { type: Boolean, default: false },
+  lastGoogleCalendarSync: { type: Date },
   createdAt: {
     type: Date,
     default: Date.now
