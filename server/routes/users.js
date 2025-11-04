@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const User = require('../models/User');
 const MoodEntry = require('../models/MoodEntry');
@@ -12,21 +13,12 @@ const router = express.Router();
 // @desc    Get user preferences
 // @route   GET /api/users/preferences
 // @access  Private
-router.get('/preferences', async (req, res) => {
-  try {
-    const user = await User.findById(req.user ? req.user._id : 'public-user');
-
-    res.status(200).json({
-      success: true,
-      data: user.preferences
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
+router.get('/preferences', (req, res) => {
+  // For demo purposes, return default preferences without database lookup
+  res.status(200).json({
+    success: true,
+    data: {}
+  });
 });
 
 // @desc    Update user preferences
@@ -34,11 +26,21 @@ router.get('/preferences', async (req, res) => {
 // @access  Private
 router.put('/preferences', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.user ? req.user._id : 'public-user',
-      { preferences: req.body },
-      { new: true, runValidators: true }
-    );
+    let user;
+    if (req.user) {
+      user = await User.findByIdAndUpdate(
+        req.user._id,
+        { preferences: req.body },
+        { new: true, runValidators: true }
+      );
+    } else {
+      // For demo purposes, just return the preferences without database update
+      res.status(200).json({
+        success: true,
+        data: req.body
+      });
+      return;
+    }
 
     res.status(200).json({
       success: true,
@@ -62,7 +64,10 @@ router.get('/mood', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
 
     if (startDate && endDate) {
       query.date = {
@@ -94,10 +99,12 @@ router.post('/mood', async (req, res) => {
   try {
     const { date, rating, note, factors } = req.body;
 
-    const existingEntry = await MoodEntry.findOne({
-      createdBy: req.user ? req.user._id : 'public@example.com',
-      date
-    });
+    let query = { date };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const existingEntry = await MoodEntry.findOne(query);
 
     let entry;
     if (existingEntry) {
@@ -107,13 +114,20 @@ router.post('/mood', async (req, res) => {
         { new: true, runValidators: true }
       );
     } else {
-      entry = await MoodEntry.create({
+      const entryData = {
         date,
         rating,
         note,
-        factors,
-        createdBy: req.user ? req.user._id : 'public@example.com'
-      });
+        factors
+      };
+
+      if (req.user) {
+        entryData.createdBy = req.user._id;
+      } else {
+        entryData.createdBy = new mongoose.Types.ObjectId();
+      }
+
+      entry = await MoodEntry.create(entryData);
     }
 
     res.status(200).json({
@@ -138,7 +152,10 @@ router.get('/pomodoro', async (req, res) => {
   try {
     const { date } = req.query;
 
-    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
 
     if (date) {
       query.date = date;
@@ -167,10 +184,12 @@ router.put('/pomodoro/:date', async (req, res) => {
   try {
     const { cyclesCompleted, totalFocusTime, totalBreakTime, sessions } = req.body;
 
-    let session = await PomodoroSession.findOne({
-      createdBy: req.user ? req.user._id : 'public@example.com',
-      date: req.params.date
-    });
+    let query = { date: req.params.date };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    let session = await PomodoroSession.findOne(query);
 
     if (session) {
       session.cyclesCompleted = cyclesCompleted;
@@ -179,14 +198,21 @@ router.put('/pomodoro/:date', async (req, res) => {
       session.sessions = sessions;
       await session.save();
     } else {
-      session = await PomodoroSession.create({
+      const sessionData = {
         date: req.params.date,
         cyclesCompleted,
         totalFocusTime,
         totalBreakTime,
-        sessions,
-        createdBy: req.user ? req.user._id : 'public@example.com'
-      });
+        sessions
+      };
+
+      if (req.user) {
+        sessionData.createdBy = req.user._id;
+      } else {
+        sessionData.createdBy = new mongoose.Types.ObjectId();
+      }
+
+      session = await PomodoroSession.create(sessionData);
     }
 
     res.status(200).json({

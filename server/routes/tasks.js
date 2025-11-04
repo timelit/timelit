@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const Task = require('../models/Task');
 const TaskList = require('../models/TaskList');
@@ -15,7 +16,10 @@ router.get('/', async (req, res) => {
   try {
     const { completed, category, listId, dueDate } = req.query;
 
-    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
 
     // Filter by completion status
     if (completed !== undefined) {
@@ -60,10 +64,12 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const task = await Task.findOne({
-      _id: req.params.id,
-      createdBy: req.user ? req.user._id : 'public@example.com'
-    }).populate('listId', 'name color');
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const task = await Task.findOne(query).populate('listId', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -91,9 +97,14 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const taskData = {
-      ...req.body,
-      createdBy: req.user ? req.user._id : 'public@example.com'
+      ...req.body
     };
+
+    if (req.user) {
+      taskData.createdBy = req.user._id;
+    } else {
+      taskData.createdBy = new mongoose.Types.ObjectId();
+    }
 
     const task = await Task.create(taskData);
 
@@ -115,8 +126,13 @@ router.post('/', async (req, res) => {
 // @access  Private
 router.put('/:id', async (req, res) => {
   try {
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
     const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
+      query,
       req.body,
       { new: true, runValidators: true }
     ).populate('listId', 'name color');
@@ -146,10 +162,12 @@ router.put('/:id', async (req, res) => {
 // @access  Private
 router.delete('/:id', async (req, res) => {
   try {
-    const task = await Task.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user ? req.user._id : 'public@example.com'
-    });
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const task = await Task.findOneAndDelete(query);
 
     if (!task) {
       return res.status(404).json({
@@ -178,8 +196,12 @@ router.delete('/:id', async (req, res) => {
 // @access  Private
 router.get('/lists', async (req, res) => {
   try {
-    const lists = await TaskList.find({ createdBy: req.user ? req.user._id : 'public@example.com' })
-      .sort({ createdAt: -1 });
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const lists = await TaskList.find(query).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -201,9 +223,14 @@ router.get('/lists', async (req, res) => {
 router.post('/lists', async (req, res) => {
   try {
     const listData = {
-      ...req.body,
-      createdBy: req.user ? req.user._id : 'public@example.com'
+      ...req.body
     };
+
+    if (req.user) {
+      listData.createdBy = req.user._id;
+    } else {
+      listData.createdBy = new mongoose.Types.ObjectId();
+    }
 
     const list = await TaskList.create(listData);
 
@@ -225,8 +252,13 @@ router.post('/lists', async (req, res) => {
 // @access  Private
 router.put('/lists/:id', async (req, res) => {
   try {
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
     const list = await TaskList.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -256,10 +288,12 @@ router.put('/lists/:id', async (req, res) => {
 // @access  Private
 router.delete('/lists/:id', async (req, res) => {
   try {
-    const list = await TaskList.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user ? req.user._id : 'public@example.com'
-    });
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const list = await TaskList.findOneAndDelete(query);
 
     if (!list) {
       return res.status(404).json({

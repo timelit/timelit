@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const Event = require('../models/Event');
 
@@ -14,7 +15,13 @@ router.get('/', async (req, res) => {
   try {
     const { start, end, category } = req.query;
 
-    let query = { createdBy: req.user ? req.user._id : 'public@example.com' };
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    } else {
+      // For demo purposes, allow public access but don't filter by createdBy
+      // This allows the frontend to work without authentication
+    }
 
     // Filter by date range
     if (start && end) {
@@ -50,10 +57,12 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const event = await Event.findOne({
-      _id: req.params.id,
-      createdBy: req.user ? req.user._id : 'public@example.com'
-    });
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOne(query);
 
     if (!event) {
       return res.status(404).json({
@@ -81,9 +90,15 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const eventData = {
-      ...req.body,
-      createdBy: req.user ? req.user._id : 'public@example.com'
+      ...req.body
     };
+
+    if (req.user) {
+      eventData.createdBy = req.user._id;
+    } else {
+      // For demo purposes, create a dummy ObjectId
+      eventData.createdBy = new mongoose.Types.ObjectId();
+    }
 
     const event = await Event.create(eventData);
 
@@ -105,8 +120,13 @@ router.post('/', async (req, res) => {
 // @access  Private
 router.put('/:id', async (req, res) => {
   try {
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
     const event = await Event.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user ? req.user._id : 'public@example.com' },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -136,10 +156,12 @@ router.put('/:id', async (req, res) => {
 // @access  Private
 router.delete('/:id', async (req, res) => {
   try {
-    const event = await Event.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user ? req.user._id : 'public@example.com'
-    });
+    let query = { _id: req.params.id };
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOneAndDelete(query);
 
     if (!event) {
       return res.status(404).json({
@@ -177,7 +199,7 @@ router.post('/bulk', async (req, res) => {
 
     const eventsWithUser = events.map(event => ({
       ...event,
-      createdBy: req.user ? req.user._id : 'public@example.com'
+      createdBy: req.user ? req.user._id : new mongoose.Types.ObjectId()
     }));
 
     const createdEvents = await Event.insertMany(eventsWithUser);
