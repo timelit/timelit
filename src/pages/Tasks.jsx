@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Inbox, CalendarDays, Calendar, List, Tag, CheckCircle2, Trash2, ChevronDown, ChevronRight, MoreHorizontal, ListTodo, X, Check, AlertCircle, CalendarX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -72,6 +72,9 @@ export default function TasksPage() {
   // NEW: State for notes section
   const [notes, setNotes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  // Prevent same-tick double submit from Enter bubbling and form submit race
+  const quickAddSubmittingRef = useRef(false);
 
   // NEW: Load notes from preferences on initial render
   useEffect(() => {
@@ -242,7 +245,10 @@ export default function TasksPage() {
   const handleQuickAdd = async (e) => {
     e.preventDefault();
     if (!quickAddValue.trim()) return;
+    if (quickAddSubmittingRef.current || isAddingTask) return;
 
+    quickAddSubmittingRef.current = true;
+    setIsAddingTask(true);
     const titleToAdd = quickAddValue.trim();
     setQuickAddValue("");
 
@@ -264,6 +270,9 @@ export default function TasksPage() {
       console.error("Error adding task:", error);
       toast.error("Failed to add task");
       setQuickAddValue(titleToAdd);
+    } finally {
+      setIsAddingTask(false);
+      quickAddSubmittingRef.current = false;
     }
   };
 
@@ -781,6 +790,7 @@ export default function TasksPage() {
               placeholder="Add a task..."
               className="w-full bg-neutral-800/50 border-neutral-700/50 text-base pl-10 h-12 rounded-lg hover:bg-neutral-800 hover:border-neutral-600/50 transition-all"
               autoComplete="off"
+              disabled={isAddingTask}
             />
             <Plus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
           </form>

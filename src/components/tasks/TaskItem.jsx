@@ -80,6 +80,7 @@ export default function TaskItem({
 
   const isCompleted = task.status === 'done';
   const isWontDo = task.status === 'wont_do';
+  const isTempTask = task.id?.startsWith('temp-');
   const taskList = lists?.find(l => l.id === task.list_id);
   const taskTags = tags?.filter(t => task.tag_ids?.includes(t.id)) || [];
 
@@ -124,7 +125,7 @@ export default function TaskItem({
   }, [isEditing]);
 
   const handleTitleClick = () => {
-    if (!isCompleted && !isWontDo) {
+    if (!isCompleted && !isWontDo && !isTempTask) {
       setIsEditing(true);
     }
   };
@@ -222,9 +223,9 @@ export default function TaskItem({
             opacity: { duration: 0.15 },
             scale: { duration: 0.15 }
           }}
-          draggable={allowDrag && !isEditing}
+          draggable={allowDrag && !isEditing && !isTempTask}
           onDragStart={(e) => {
-            if (!allowDrag || isEditing) {
+            if (!allowDrag || isEditing || isTempTask) {
               e.preventDefault();
               return;
             }
@@ -233,7 +234,7 @@ export default function TaskItem({
             document.body.appendChild(dragImg);
             e.dataTransfer.setDragImage(dragImg, 0, 0);
             setTimeout(() => document.body.removeChild(dragImg), 0);
-            
+
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', task.id);
             onDragStart?.(e);
@@ -280,6 +281,7 @@ export default function TaskItem({
             <Checkbox
               checked={isCompleted || isSelected}
               onCheckedChange={handleCheckboxClick}
+              disabled={isTempTask}
               className="mt-0.5 flex-shrink-0 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
               style={{
                 borderColor: !isCompleted && !isSelected ? checkboxColor : undefined,
@@ -412,8 +414,11 @@ export default function TaskItem({
               className="h-7 w-7 text-neutral-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete(task.id);
+                if (!isTempTask) {
+                  onDelete(task.id);
+                }
               }}
+              disabled={isTempTask}
             >
               <Trash2 className="w-4 h-4" />
             </Button>

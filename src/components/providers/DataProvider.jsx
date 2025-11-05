@@ -149,6 +149,31 @@ class OptimizedCache {
 
 const cache = new OptimizedCache();
 
+// Normalize server task shape -> UI task shape
+function normalizeTask(t) {
+  if (!t) return t;
+  const id = t.id || t._id;
+  const status =
+    t.status ||
+    (typeof t.completed === "boolean" ? (t.completed ? "done" : "todo") : undefined);
+  const due_date =
+    t.due_date || (t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : null);
+  const list_id = t.list_id ?? t.listId ?? null;
+  const tag_ids = t.tag_ids ?? t.tags ?? [];
+  const created_date =
+    t.created_date || (t.createdAt ? new Date(t.createdAt).toISOString() : undefined);
+
+  return {
+    ...t,
+    id,
+    status: status || "todo",
+    due_date,
+    list_id,
+    tag_ids,
+    created_date: created_date || new Date().toISOString(),
+  };
+}
+
 const taskCategoryColors = {
   work: '#3b82f6', personal: '#8b5cf6', learning: '#10b981',
   health: '#ef4444', home: '#f59e0b', errands: '#6366f1', finance: '#ec4899'
@@ -521,6 +546,7 @@ export function DataProvider({ children }) {
 
   const dataLoadedRef = useRef(false);
   const userLoadedRef = useRef(false);
+  const addTaskInFlightRef = useRef(false);
 
   const updateUndoRedoStates = useCallback(() => {
     setCanUndoState(undoManager.canUndo());
@@ -586,7 +612,13 @@ export function DataProvider({ children }) {
       ]);
 
       const localEvents = eventsResult.status === 'fulfilled' ? eventsResult.value || [] : [];
-      const allTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
+      const rawTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
+      // Scope tasks to this user via a hidden owner tag stored on the server-side "tags" array
+      const ownerTag = user?.email ? `__owner:${user.email}` : null;
+      const scopedRawTasks = ownerTag
+        ? (rawTasks || []).filter(t => Array.isArray(t.tags) && t.tags.includes(ownerTag))
+        : (rawTasks || []);
+      const allTasks = scopedRawTasks.map(normalizeTask);
 
       const taskIndex = new Map(allTasks.map(t => [t.id, t]));
 
@@ -850,8 +882,14 @@ export function DataProvider({ children }) {
   }, [user, preferences, updateUndoRedoStates]);
 
   const addTask = useCallback(async (taskData) => {
+    if (addTaskInFlightRef.current) {
+      // Prevent duplicate submissions fired by multiple event pathways
+      return;
+    }
+    addTaskInFlightRef.current = true;
+
     const tempId = `temp-${Date.now()}-${Math.random()}`;
-    
+     
     // Apply default and fast categorization values immediately
     const categorizedResult = fastCategorize(taskData, 'task', preferences);
 
@@ -862,6 +900,11 @@ export function DataProvider({ children }) {
       duration: taskData.duration || 60,
       category: taskData.category || categorizedResult.category || 'personal',
       color: taskData.color || categorizedResult.color || '#8b5cf6',
+      // Hidden owner scoping tag saved only on server-side model (does not affect UI tags)
+      tags: [
+        ...((taskData && taskData.tags) ? taskData.tags : []),
+        ...(user?.email ? [`__owner:${user.email}`] : []),
+      ],
     };
     
     const tempTask = { ...finalTaskData, id: tempId, created_date: new Date().toISOString() };
@@ -869,9 +912,17 @@ export function DataProvider({ children }) {
     setTasks(prev => [tempTask, ...prev]);
 
     try {
-      const newTask = await timelit.entities.Task.create({ ...finalTaskData, created_by: user.email });
+      const createdTask = await timelit.entities.Task.create({ ...finalTaskData, created_by: user.email });
+      const normalized = normalizeTask(createdTask);
+      // Ensure the hidden owner tag is present after server round-trip
+      if (user?.email && Array.isArray(normalized.tags)) {
+        const ownerTagCreate = `__owner:${user.email}`;
+        if (!normalized.tags.includes(ownerTagCreate)) {
+          normalized.tags = [...normalized.tags, ownerTagCreate];
+        }
+      }
 
-      setTasks(prev => prev.map(t => t.id === tempId ? newTask : t));
+      setTasks(prev => prev.map(t => t.id === tempId ? normalized : t));
       cache.invalidate(`tasks-${user.email}`);
 
       undoManager.addAction({
@@ -906,9 +957,11 @@ export function DataProvider({ children }) {
         }, 100);
       }
 
+      addTaskInFlightRef.current = false;
       return newTask;
     } catch (error) {
       setTasks(prev => prev.filter(t => t.id !== tempId));
+      addTaskInFlightRef.current = false;
       throw error;
     }
   }, [user, preferences, bulkAddEvents, updateTask, updateUndoRedoStates]);

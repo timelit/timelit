@@ -192,6 +192,19 @@ class ApiClient {
         return response.data;
       },
 
+      filter: async (filters = {}) => {
+        const response = await this.request('/users/preferences');
+        return response.data ? [response.data] : [];
+      },
+
+      create: async (data) => {
+        const response = await this.request('/users/preferences', {
+          method: 'PUT',
+          body: JSON.stringify(data)
+        });
+        return response.data;
+      },
+
       update: async (id, data) => {
         const response = await this.request('/users/preferences', {
           method: 'PUT',
