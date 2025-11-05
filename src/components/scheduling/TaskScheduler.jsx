@@ -175,18 +175,19 @@ export class TaskScheduler {
       // Get scheduling window
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const dueDate = task.due_date ? new Date(task.due_date) : new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
       const searchEnd = new Date(Math.min(dueDate.getTime(), today.getTime() + 14 * 24 * 60 * 60 * 1000));
 
-      // Get work hours
+      // Get work hours - use flexible mode if custom times are set
       let workStart, workEnd;
       if (this.preferences.schedule_mode === 'school') {
         [workStart, workEnd] = [
           this.preferences.school_start_time || '08:00',
           this.preferences.school_end_time || '15:00'
         ];
-      } else if (this.preferences.schedule_mode === 'work') {
+      } else if (this.preferences.schedule_mode === 'flexible' ||
+                 (this.preferences.work_start_time && this.preferences.work_end_time)) {
         [workStart, workEnd] = [
           this.preferences.work_start_time || '09:00',
           this.preferences.work_end_time || '17:00'

@@ -927,7 +927,7 @@ export function DataProvider({ children }) {
 
       undoManager.addAction({
         type: 'TASK_CREATE',
-        data: newTask
+        data: normalized
       });
       updateUndoRedoStates();
 
@@ -938,21 +938,27 @@ export function DataProvider({ children }) {
             const allCurrentEvents = await timelit.entities.Event.filter({ created_by: user.email });
             const allCurrentTasks = await timelit.entities.Task.filter({ created_by: user.email });
             const scheduler = new TaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
-            const result = scheduler.scheduleTask(newTask);
+            const result = scheduler.scheduleTask(normalized);
 
             if (result?.success) {
               if (result.newEvents?.length > 0) {
                 const eventsWithTaskInfo = result.newEvents.map(event => ({
                   ...event,
-                  category: newTask.category || event.category,
-                  color: newTask.color || event.color
+                  category: normalized.category || event.category,
+                  color: normalized.color || event.color
                 }));
                 await bulkAddEvents(eventsWithTaskInfo);
+                console.log(`✅ Auto-scheduled task "${normalized.title}" to calendar at ${result.newEvents[0].start_time}`);
+                toast.success(`Task scheduled for ${new Date(result.newEvents[0].start_time).toLocaleDateString()}`);
               }
-              await updateTask(newTask.id, result.taskUpdate);
+              await updateTask(normalized.id, result.taskUpdate);
+            } else {
+              console.log(`⚠️ Could not auto-schedule task "${normalized.title}": ${result?.reason || 'Unknown reason'}`);
+              toast.info(`Task added but couldn't be auto-scheduled: ${result?.reason || 'No available time slots'}`);
             }
           } catch (error) {
             console.error("Auto-scheduling error:", error);
+            toast.error("Task added but scheduling failed");
           }
         }, 100);
       }

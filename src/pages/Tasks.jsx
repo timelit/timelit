@@ -250,7 +250,7 @@ export default function TasksPage() {
     quickAddSubmittingRef.current = true;
     setIsAddingTask(true);
     const titleToAdd = quickAddValue.trim();
-    setQuickAddValue("");
+    setQuickAddValue(""); // Clear immediately on submit
 
     const taskData = {
       title: titleToAdd,
@@ -269,7 +269,7 @@ export default function TasksPage() {
     } catch (error) {
       console.error("Error adding task:", error);
       toast.error("Failed to add task");
-      setQuickAddValue(titleToAdd);
+      setQuickAddValue(titleToAdd); // Restore on error
     } finally {
       setIsAddingTask(false);
       quickAddSubmittingRef.current = false;
