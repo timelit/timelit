@@ -448,7 +448,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Automatically find time slots for tasks</p>
                         </div>
                         <Switch
-                          checked={getEffectiveValue('auto_schedule_tasks_into_calendar', false)}
+                          checked={getEffectiveValue('auto_schedule_tasks_into_calendar', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('auto_schedule_tasks_into_calendar', checked)}
                         />
                       </div>

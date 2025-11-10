@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
 
     // Filter by completion status
     if (completed !== undefined) {
-      query.completed = completed === 'true';
+      query.status = completed === 'true' ? 'done' : 'todo';
     }
 
     // Filter by category
@@ -38,12 +38,12 @@ router.get('/', async (req, res) => {
 
     // Filter by due date
     if (dueDate) {
-      query.dueDate = { $lte: new Date(dueDate) };
+      query.due_date = { $lte: new Date(dueDate) };
     }
 
     const tasks = await Task.find(query)
-      .populate('listId', 'name color')
-      .sort({ createdAt: -1 });
+      .populate('list_id', 'name color')
+      .sort({ created_date: -1 });
 
     res.status(200).json({
       success: true,
@@ -69,7 +69,7 @@ router.get('/:id', async (req, res) => {
       query.createdBy = req.user._id;
     }
 
-    const task = await Task.findOne(query).populate('listId', 'name color');
+    const task = await Task.findOne(query).populate('list_id', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -135,7 +135,7 @@ router.put('/:id', async (req, res) => {
       query,
       req.body,
       { new: true, runValidators: true }
-    ).populate('listId', 'name color');
+    ).populate('list_id', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -302,10 +302,10 @@ router.delete('/lists/:id', async (req, res) => {
       });
     }
 
-    // Remove listId from all tasks in this list
+    // Remove list_id from all tasks in this list
     await Task.updateMany(
-      { listId: req.params.id },
-      { $unset: { listId: 1 } }
+      { list_id: req.params.id },
+      { $unset: { list_id: 1 } }
     );
 
     res.status(200).json({

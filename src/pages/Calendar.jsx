@@ -366,21 +366,10 @@ export default function CalendarPage() {
     const duration = preferences?.default_event_duration || 60;
     const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
 
-    try {
-      await addEvent({
-        title: "New Event",
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        category: preferences?.default_event_category || "personal",
-        priority: preferences?.default_event_priority || "medium",
-        description: "",
-      });
-      toast.success("New event created!");
-    } catch (error) {
-      console.error("Failed to create event:", error);
-      toast.error("Failed to create event");
-    }
-  }, [draggedEvent, resizingEvent, preferences, addEvent, calendarView]);
+    // Set the initial date for the modal
+    setIsCreateEventModalOpen(true);
+    // The modal will handle the creation with proper form validation
+  }, [draggedEvent, resizingEvent, calendarView]);
 
   const handleNewEventClick = useCallback(() => {
     setIsCreateEventModalOpen(true);
@@ -1200,7 +1189,8 @@ export default function CalendarPage() {
         <CreateEventModal
           isOpen={isCreateEventModalOpen}
           onClose={() => setIsCreateEventModalOpen(false)}
-          onSave={handleCreateEvent}
+          onEventCreate={handleCreateEvent}
+          initialDate={currentDate}
           preferences={preferences}
         />
       </div>

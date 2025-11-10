@@ -640,7 +640,27 @@ export function DataProvider({ children }) {
         return event;
       });
 
-      setEvents(processedEvents);
+      // Add task-scheduled events to the events list
+      const taskScheduledEvents = allTasks
+        .filter(task => task.scheduled_start_time && task.status !== 'done')
+        .map(task => ({
+          id: `task-${task.id}`,
+          title: task.title,
+          start_time: task.scheduled_start_time,
+          end_time: new Date(new Date(task.scheduled_start_time).getTime() + (task.duration || 60) * 60 * 1000).toISOString(),
+          category: task.category,
+          color: task.color,
+          priority: task.priority,
+          task_id: task.id,
+          task_status: task.status,
+          task_priority: task.priority,
+          isTaskEvent: true,
+          description: task.description,
+        }));
+
+      const allEvents = [...processedEvents, ...taskScheduledEvents];
+
+      setEvents(allEvents);
       setTasks(allTasks);
 
       dataLoadedRef.current = true;
@@ -726,7 +746,7 @@ export function DataProvider({ children }) {
 
   const updateTask = useCallback(async (taskId, updates) => {
     const originalTask = tasks.find(t => t.id === taskId);
-    
+
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
 
     setEvents(prev => prev.map(event => {
@@ -744,6 +764,27 @@ export function DataProvider({ children }) {
       }
       return event;
     }));
+
+    // Update task-scheduled events when task changes
+    setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== taskId));
+    const updatedTask = { ...originalTask, ...updates };
+    if (updatedTask.scheduled_start_time && updatedTask.status !== 'done') {
+      const taskEvent = {
+        id: `task-${taskId}`,
+        title: updatedTask.title,
+        start_time: updatedTask.scheduled_start_time,
+        end_time: new Date(new Date(updatedTask.scheduled_start_time).getTime() + (updatedTask.duration || 60) * 60 * 1000).toISOString(),
+        category: updatedTask.category,
+        color: updatedTask.color,
+        priority: updatedTask.priority,
+        task_id: taskId,
+        task_status: updatedTask.status,
+        task_priority: updatedTask.priority,
+        isTaskEvent: true,
+        description: updatedTask.description,
+      };
+      setEvents(prev => [...prev, taskEvent]);
+    }
 
     try {
       timelit.entities.Task.update(taskId, updates).then(() => {
@@ -1060,9 +1101,9 @@ export function DataProvider({ children }) {
   const deleteTask = useCallback(async (taskId) => {
     const taskToDelete = tasks.find(t => t.id === taskId);
     const linkedEvents = events.filter(e => e.task_id === taskId);
-    
+
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    setEvents(prev => prev.filter(e => e.task_id !== taskId));
+    setEvents(prev => prev.filter(e => e.task_id !== taskId || e.isTaskEvent));
 
     try {
       Promise.all([
@@ -1211,6 +1252,7 @@ export function DataProvider({ children }) {
 
         case 'TASK_CREATE':
           setTasks(prev => prev.filter(t => t.id !== action.data.id));
+          setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== action.data.id));
           Task.delete(action.data.id).then(() => {
             cache.invalidate(`tasks-${user.email}`);
           });
@@ -1234,6 +1276,25 @@ export function DataProvider({ children }) {
             }
             return event;
           }));
+          // Restore task-scheduled event to previous state
+          setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== action.data.id));
+          if (action.data.previous.scheduled_start_time && action.data.previous.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.id}`,
+              title: action.data.previous.title,
+              start_time: action.data.previous.scheduled_start_time,
+              end_time: new Date(new Date(action.data.previous.scheduled_start_time).getTime() + (action.data.previous.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.previous.category,
+              color: action.data.previous.color,
+              priority: action.data.previous.priority,
+              task_id: action.data.id,
+              task_status: action.data.previous.status,
+              task_priority: action.data.previous.priority,
+              isTaskEvent: true,
+              description: action.data.previous.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
           Task.update(action.data.id, action.data.previous).then(() => {
             cache.invalidate(`tasks-${user.email}`);
           });
@@ -1243,6 +1304,42 @@ export function DataProvider({ children }) {
           setTasks(prev => [action.data.task, ...prev]);
           if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
             setEvents(prev => [...action.data.linkedEvents, ...prev]);
+          }
+          // Restore task-scheduled event if task was scheduled
+          if (action.data.task.scheduled_start_time && action.data.task.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.task.id}`,
+              title: action.data.task.title,
+              start_time: action.data.task.scheduled_start_time,
+              end_time: new Date(new Date(action.data.task.scheduled_start_time).getTime() + (action.data.task.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.task.category,
+              color: action.data.task.color,
+              priority: action.data.task.priority,
+              task_id: action.data.task.id,
+              task_status: action.data.task.status,
+              task_priority: action.data.task.priority,
+              isTaskEvent: true,
+              description: action.data.task.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
+          // Restore task-scheduled event if task was scheduled
+          if (action.data.task.scheduled_start_time && action.data.task.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.task.id}`,
+              title: action.data.task.title,
+              start_time: action.data.task.scheduled_start_time,
+              end_time: new Date(new Date(action.data.task.scheduled_start_time).getTime() + (action.data.task.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.task.category,
+              color: action.data.task.color,
+              priority: action.data.task.priority,
+              task_id: action.data.task.id,
+              task_status: action.data.task.status,
+              task_priority: action.data.task.priority,
+              isTaskEvent: true,
+              description: action.data.task.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
           }
           Task.create({ ...action.data.task, created_by: user.email }).then((restoredTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.task.id ? restoredTask : t));
@@ -1315,6 +1412,24 @@ export function DataProvider({ children }) {
 
         case 'TASK_CREATE':
           setTasks(prev => [action.data, ...prev]);
+          // Restore task-scheduled event if task was scheduled
+          if (action.data.scheduled_start_time && action.data.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.id}`,
+              title: action.data.title,
+              start_time: action.data.scheduled_start_time,
+              end_time: new Date(new Date(action.data.scheduled_start_time).getTime() + (action.data.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.category,
+              color: action.data.color,
+              priority: action.data.priority,
+              task_id: action.data.id,
+              task_status: action.data.status,
+              task_priority: action.data.priority,
+              isTaskEvent: true,
+              description: action.data.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
           Task.create({ ...action.data, created_by: user.email }).then((recreatedTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.id ? recreatedTask : t));
             cache.invalidate(`tasks-${user.email}`);

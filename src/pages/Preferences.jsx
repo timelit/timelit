@@ -61,7 +61,7 @@ export default function PreferencesPage() {
       default_event_priority: "medium",
       default_event_duration: 60,
       auto_create_calendar_events: false,
-      auto_schedule_tasks_into_calendar: false, // Added new preference default
+      auto_schedule_tasks_into_calendar: true, // Added new preference default
       break_duration_between_tasks: 15, // Added
       max_consecutive_tasks: 3, // Added
       work_start_time: "09:00",
