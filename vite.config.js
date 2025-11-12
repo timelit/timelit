@@ -7,11 +7,21 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: process.env.PORT || 5173, // Render provides PORT environment variable
+    port: process.env.PORT || 5173,
+    allowedHosts: [
+      'timelit.onrender.com',
+      'localhost',
+      '.onrender.com' // This allows all subdomains of onrender.com
+    ]
   },
   preview: {
     host: '0.0.0.0',
     port: process.env.PORT || 5173,
+    allowedHosts: [
+      'timelit.onrender.com',
+      'localhost',
+      '.onrender.com'
+    ]
   },
   resolve: {
     alias: {
@@ -26,4 +36,4 @@ export default defineConfig({
       },
     },
   },
-}) 
+})
