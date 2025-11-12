@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: timelit-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: timelit-backend
+    env: node
+    rootDirectory: server
+    buildCommand: npm install
+    startCommand: npm run dev
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
