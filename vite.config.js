@@ -14,7 +14,7 @@ export default defineConfig({
       '.onrender.com' // This allows all subdomains of onrender.com
     ]
   },
-  preview: {
+  preview: { // testing
     host: '0.0.0.0',
     port: process.env.PORT || 5173,
     allowedHosts: [
