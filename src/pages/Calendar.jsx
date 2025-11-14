@@ -189,6 +189,7 @@ export default function CalendarPage() {
     loadGoogleEventsForRange,
     preferences,
     user,
+    updateTask,
    } = useData();
 
   const { currentDate, setCurrentDate } = useCalendarDate();
@@ -391,14 +392,32 @@ export default function CalendarPage() {
 
   const handleCreateEvent = useCallback(async (eventData) => {
     try {
-      await addEvent(eventData);
-      toast.success("Event created!");
+      const scheduler = new SmartTaskScheduler(events, tasks, preferences);
+      const result = scheduler.scheduleTask({
+        title: eventData.title,
+        description: eventData.description,
+        duration: eventData.duration || 60,
+        category: eventData.category,
+        priority: eventData.priority
+      });
+
+      if (result.success) {
+        await Promise.all([
+          ...result.newEvents.map(e => addEvent(e)),
+          updateTask(result.taskUpdate.id, result.taskUpdate)
+        ]);
+        toast.success("Event created and scheduled!");
+      } else {
+        await addEvent(eventData);
+        toast.success("Event created but could not be auto-scheduled");
+      }
+      
       setIsCreateEventModalOpen(false);
     } catch (error) {
       console.error("Failed to create event:", error);
       toast.error("Failed to create event");
     }
-  }, [addEvent]);
+  }, [addEvent, events, tasks, preferences]);
 
   const handleEventSelect = useCallback((eventId, isShiftClick) => {
     if (isShiftClick && lastSelectedEventId) {
@@ -548,11 +567,21 @@ export default function CalendarPage() {
       );
 
       if (confirmed) {
-        await updateEvent(draggedEvent.id, {
-          start_time: dragPreview.start.toISOString(),
-          end_time: dragPreview.end.toISOString(),
-        });
-        toast.success('Event moved');
+        if (draggedEvent.isTaskEvent) {
+          const taskId = draggedEvent.task_id;
+          const duration = (dragPreview.end.getTime() - dragPreview.start.getTime()) / (1000 * 60);
+          await updateTask(taskId, {
+            scheduled_start_time: dragPreview.start.toISOString(),
+            duration: Math.max(15, Math.round(duration / 15) * 15) // Snap to 15min
+          });
+          toast.success('Task schedule updated');
+        } else {
+          await updateEvent(draggedEvent.id, {
+            start_time: dragPreview.start.toISOString(),
+            end_time: dragPreview.end.toISOString(),
+          });
+          toast.success('Event moved');
+        }
       } else {
         toast.info('Move cancelled');
       }
@@ -564,7 +593,7 @@ export default function CalendarPage() {
       setDropTarget(null);
       setDragPreview(null);
     }
-  }, [draggedEvent, dragPreview, updateEvent, calendarView]);
+  }, [draggedEvent, dragPreview, updateEvent, updateTask, calendarView]);
 
   const handleResizeStart = useCallback((event, direction, mouseEvent) => {
     if (calendarView === 'month' || calendarView === 'year') return;
@@ -715,11 +744,21 @@ export default function CalendarPage() {
             );
 
             if (confirmed) {
-              await updateEvent(resizingEvent.event.id, {
-                start_time: dragPreview.start.toISOString(),
-                end_time: dragPreview.end.toISOString(),
-              });
-              toast.success('Event time updated');
+              if (resizingEvent.event.isTaskEvent) {
+                const taskId = resizingEvent.event.task_id;
+                const duration = (dragPreview.end.getTime() - dragPreview.start.getTime()) / (1000 * 60);
+                await updateTask(taskId, {
+                  scheduled_start_time: dragPreview.start.toISOString(),
+                  duration: Math.max(15, Math.round(duration / 15) * 15)
+                });
+                toast.success('Task duration updated');
+              } else {
+                await updateEvent(resizingEvent.event.id, {
+                  start_time: dragPreview.start.toISOString(),
+                  end_time: dragPreview.end.toISOString(),
+                });
+                toast.success('Event time updated');
+              }
             } else {
                 toast.info('Resize cancelled');
             }
@@ -994,6 +1033,11 @@ export default function CalendarPage() {
                                               <div className="text-neutral-500 mt-0.5">
                                                 Duration: {Math.round(duration * 60)} min
                                               </div>
+                                              {item.description && (
+                                                <div className="text-neutral-400 mt-1 italic">
+                                                  {item.description}
+                                                </div>
+                                              )}
                                               {item.location && (
                                                 <div className="text-neutral-500 mt-0.5">
                                                   📍 {item.location}
