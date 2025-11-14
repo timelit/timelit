@@ -7,7 +7,7 @@ import { Task } from "@/api/entities";
 import { TaskList } from "@/api/entities";
 import { TaskTag } from "@/api/entities";
 import { timelit } from "@/api/timelitClient";
-import { TaskScheduler } from '../scheduling/TaskScheduler';
+import { SmartTaskScheduler } from '../scheduling/SmartTaskScheduler';
 import { toast } from "sonner";
 import { notificationManager } from "../notifications/NotificationManager";
 
@@ -978,7 +978,7 @@ export function DataProvider({ children }) {
             // Fetch latest data for scheduling to ensure accuracy
             const allCurrentEvents = await timelit.entities.Event.filter({ created_by: user.email });
             const allCurrentTasks = await timelit.entities.Task.filter({ created_by: user.email });
-            const scheduler = new TaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
+            const scheduler = new SmartTaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
             const result = scheduler.scheduleTask(normalized);
 
             if (result?.success) {
@@ -1167,7 +1167,7 @@ export function DataProvider({ children }) {
 
       const manualEvents = currentEvents.filter(e => !e.ai_suggested && !e.task_id);
 
-      const scheduler = new TaskScheduler(manualEvents, activeTasks, preferences);
+      const scheduler = new SmartTaskScheduler(manualEvents, activeTasks, preferences);
       const allNewEvents = [];
       const allTaskUpdates = [];
 
