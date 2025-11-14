@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { User } from "@/api/entities";
 import { UserPreferences } from "@/api/entities";
@@ -613,7 +612,8 @@ export function DataProvider({ children }) {
 
       const localEvents = eventsResult.status === 'fulfilled' ? eventsResult.value || [] : [];
       const rawTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
-      // Scope tasks to this user via a hidden owner tag stored on the server-side "tags" array
+      
+      // Scope tasks to this user via a hidden owner tag
       const ownerTag = user?.email ? `__owner:${user.email}` : null;
       const scopedRawTasks = ownerTag
         ? (rawTasks || []).filter(t => Array.isArray(t.tags) && t.tags.includes(ownerTag))
@@ -660,10 +660,13 @@ export function DataProvider({ children }) {
 
       const allEvents = [...processedEvents, ...taskScheduledEvents];
 
+      // ✅ IMPORTANT: Clear and set fresh state
       setEvents(allEvents);
       setTasks(allTasks);
 
       dataLoadedRef.current = true;
+
+      console.log(`✅ Loaded ${allEvents.length} events and ${allTasks.length} tasks`);
 
     } catch (err) {
       console.error("Error loading data:", err);
@@ -671,7 +674,7 @@ export function DataProvider({ children }) {
     } finally {
       setIsDataLoading(false);
     }
-  }, [user, isDataLoading]);
+  }, [user]);
 
   const refreshData = useCallback(async () => {
     if (user?.email) {
@@ -889,7 +892,6 @@ export function DataProvider({ children }) {
   const addEvent = useCallback(async (eventData) => {
     const tempId = `temp-${Date.now()}`;
     
-    // Apply default and fast categorization values immediately
     const categorizedResult = fastCategorize(eventData, 'event', preferences);
 
     const finalEventData = {
@@ -903,12 +905,21 @@ export function DataProvider({ children }) {
     
     const tempEvent = { ...finalEventData, id: tempId };
     
+    // Add temp event immediately for UI feedback
     setEvents(prev => [tempEvent, ...prev]);
 
     try {
       const newEvent = await timelit.entities.Event.create({ ...finalEventData, created_by: user.email });
       
-      setEvents(prev => prev.map(e => e.id === tempId ? newEvent : e));
+      console.log('✅ Event created:', newEvent);
+      
+      // Replace temp event with real event from server
+      setEvents(prev => {
+        const filtered = prev.filter(e => e.id !== tempId);
+        return [newEvent, ...filtered];
+      });
+      
+      // Invalidate cache to trigger refetch if needed
       cache.invalidate(`events-${user.email}`);
 
       undoManager.addAction({
@@ -917,23 +928,24 @@ export function DataProvider({ children }) {
       });
       updateUndoRedoStates();
 
+      toast.success('Event added!');
       return newEvent;
     } catch (error) {
+      console.error('Failed to create event:', error);
       setEvents(prev => prev.filter(e => e.id !== tempId));
+      toast.error('Failed to add event');
       throw error;
     }
   }, [user, preferences, updateUndoRedoStates]);
 
   const addTask = useCallback(async (taskData) => {
     if (addTaskInFlightRef.current) {
-      // Prevent duplicate submissions fired by multiple event pathways
       return;
     }
     addTaskInFlightRef.current = true;
 
     const tempId = `temp-${Date.now()}-${Math.random()}`;
 
-    // Apply default and fast categorization values immediately
     const categorizedResult = fastCategorize(taskData, 'task', preferences);
 
     const finalTaskData = {
@@ -943,7 +955,6 @@ export function DataProvider({ children }) {
       duration: taskData.duration || 60,
       category: taskData.category || categorizedResult.category || 'personal',
       color: taskData.color || categorizedResult.color || '#8b5cf6',
-      // Hidden owner scoping tag saved only on server-side model (does not affect UI tags)
       tags: [
         ...((taskData && taskData.tags) ? taskData.tags : []),
         ...(user?.email ? [`__owner:${user.email}`] : []),
@@ -957,7 +968,9 @@ export function DataProvider({ children }) {
     try {
       const createdTask = await timelit.entities.Task.create({ ...finalTaskData, created_by: user.email });
       const normalized = normalizeTask(createdTask);
-      // Ensure the hidden owner tag is present after server round-trip
+      
+      console.log('✅ Task created:', normalized);
+      
       if (user?.email && Array.isArray(normalized.tags)) {
         const ownerTagCreate = `__owner:${user.email}`;
         if (!normalized.tags.includes(ownerTagCreate)) {
@@ -965,7 +978,12 @@ export function DataProvider({ children }) {
         }
       }
 
-      setTasks(prev => prev.map(t => t.id === tempId ? normalized : t));
+      // Replace temp task with real task from server
+      setTasks(prev => {
+        const filtered = prev.filter(t => t.id !== tempId);
+        return [normalized, ...filtered];
+      });
+      
       cache.invalidate(`tasks-${user.email}`);
 
       undoManager.addAction({
@@ -974,11 +992,11 @@ export function DataProvider({ children }) {
       });
       updateUndoRedoStates();
 
-      // Simplified task scheduling - just determine the slot and add UI event directly
+      toast.success('Task added!');
+
       if (preferences?.auto_schedule_tasks_into_calendar) {
         setTimeout(async () => {
           try {
-            // Use current events and updated tasks (including the new task) for scheduling
             const updatedTasks = [...tasks, normalized];
             const scheduler = new SmartTaskScheduler(events, updatedTasks, preferences);
             const result = scheduler.scheduleTask(normalized);
@@ -1000,21 +1018,14 @@ export function DataProvider({ children }) {
                 description: normalized.description,
               };
 
-              // Add to events state directly
               setEvents(prev => [...prev, taskEvent]);
-
-              // Update task with scheduled time
               await updateTask(normalized.id, result.taskUpdate);
 
-              console.log(`✅ Auto-scheduled task "${normalized.title}" to calendar at ${scheduledEvent.start_time}`);
-              toast.success(`Task scheduled for ${new Date(scheduledEvent.start_time).toLocaleDateString()}`);
-            } else {
-              console.log(`⚠️ Could not auto-schedule task "${normalized.title}": ${result?.reason || 'Unknown reason'}`);
-              toast.info(`Task added but couldn't be auto-scheduled: ${result?.reason || 'No available time slots'}`);
+              console.log(`✅ Auto-scheduled task "${normalized.title}" to calendar`);
+              toast.success(`Task scheduled!`);
             }
           } catch (error) {
             console.error("Auto-scheduling error:", error);
-            toast.error("Task added but scheduling failed");
           }
         }, 100);
       }
@@ -1022,8 +1033,10 @@ export function DataProvider({ children }) {
       addTaskInFlightRef.current = false;
       return normalized;
     } catch (error) {
+      console.error('Failed to create task:', error);
       setTasks(prev => prev.filter(t => t.id !== tempId));
       addTaskInFlightRef.current = false;
+      toast.error('Failed to add task');
       throw error;
     }
   }, [user, preferences, events, tasks, updateTask, updateUndoRedoStates]);

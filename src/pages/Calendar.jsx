@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { timelit } from "@/api/timelitClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -291,6 +290,8 @@ export default function CalendarPage() {
   }, [isLoading, calendarView, hasScrolledRef]);
 
   const getItemsForDay = useCallback((day) => {
+    if (!day) return [];
+    
     const dayStart = new Date(day);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(day);
@@ -298,10 +299,23 @@ export default function CalendarPage() {
 
     return events.filter((event) => {
       try {
+        if (!event || !event.start_time || !event.end_time) {
+          console.warn('Invalid event structure:', event);
+          return false;
+        }
+        
         const eventStart = new Date(event.start_time);
         const eventEnd = new Date(event.end_time);
+        
+        // Check if event is valid
+        if (isNaN(eventStart.getTime()) || isNaN(eventEnd.getTime())) {
+          console.warn('Invalid event dates:', event);
+          return false;
+        }
+        
         return eventStart < dayEnd && eventEnd > dayStart;
-      } catch {
+      } catch (error) {
+        console.error('Error filtering event:', event, error);
         return false;
       }
     });

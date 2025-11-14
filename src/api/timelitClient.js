@@ -1,5 +1,69 @@
-// Local API client for Timelit infrastructure
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'|| import.meta.env.VITE_API_BASE_URL
+ // Local API client for Timelit infrastructure
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
+  'http://localhost:5000/api';
+
+// --- Event helpers: map between backend camelCase and frontend snake_case ---
+const mapEventFromServer = (event) => {
+  if (!event) return event;
+
+  const start = event.start_time || event.startTime;
+  const end = event.end_time || event.endTime;
+
+  return {
+    ...event,
+    id: event.id || event._id,
+    start_time: start,
+    end_time: end,
+    is_all_day: event.is_all_day ?? event.allDay ?? false,
+    created_by: event.created_by || event.createdBy,
+  };
+};
+
+const mapEventToServer = (event) => {
+  if (!event) return event;
+
+  const payload = { ...event };
+  const start = event.start_time || event.startTime;
+  const end = event.end_time || event.endTime;
+
+  if (start) payload.startTime = start;
+  if (end) payload.endTime = end;
+  if (event.is_all_day !== undefined) payload.allDay = event.is_all_day;
+  if (event.created_by) payload.createdBy = event.created_by;
+
+  delete payload.start_time;
+  delete payload.end_time;
+  delete payload.is_all_day;
+  delete payload.created_by;
+
+  return payload;
+};
+
+// --- Task tag helpers (stored in localStorage for now) ---
+const TASK_TAGS_KEY = 'timelit_task_tags';
+
+const loadTaskTags = () => {
+  try {
+    const raw = localStorage.getItem(TASK_TAGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch (err) {
+    console.warn('Failed to load task tags from localStorage:', err);
+    return [];
+  }
+};
+
+const saveTaskTags = (tags) => {
+  try {
+    localStorage.setItem(TASK_TAGS_KEY, JSON.stringify(tags));
+  } catch (err) {
+    console.warn('Failed to save task tags to localStorage:', err);
+  }
+};
 
 class ApiClient {
   constructor() {
@@ -83,29 +147,31 @@ class ApiClient {
   entities = {
     Event: {
       get: async (id) => {
-        return await this.request(`/events/${id}`);
+        const response = await this.request(`/events/${id}`);
+        return mapEventFromServer(response.data);
       },
 
       filter: async (filters = {}) => {
         const queryString = new URLSearchParams(filters).toString();
-        const response = await this.request(`/events?${queryString}`);
-        return response.data;
+        const response = await this.request(`/events${queryString ? `?${queryString}` : ''}`);
+        const events = response.data || [];
+        return events.map(mapEventFromServer);
       },
 
       create: async (data) => {
         const response = await this.request('/events', {
           method: 'POST',
-          body: JSON.stringify(data)
+          body: JSON.stringify(mapEventToServer(data))
         });
-        return response.data;
+        return mapEventFromServer(response.data);
       },
 
       update: async (id, data) => {
         const response = await this.request(`/events/${id}`, {
           method: 'PUT',
-          body: JSON.stringify(data)
+          body: JSON.stringify(mapEventToServer(data))
         });
-        return response.data;
+        return mapEventFromServer(response.data);
       },
 
       delete: async (id) => {
@@ -117,9 +183,10 @@ class ApiClient {
       bulkCreate: async (events) => {
         const response = await this.request('/events/bulk', {
           method: 'POST',
-          body: JSON.stringify({ events })
+          body: JSON.stringify({ events: events.map(mapEventToServer) })
         });
-        return response.data;
+        const created = response.data || [];
+        return created.map(mapEventFromServer);
       }
     },
 
@@ -183,6 +250,43 @@ class ApiClient {
         return await this.request(`/tasks/lists/${id}`, {
           method: 'DELETE'
         });
+      }
+    },
+
+    TaskTag: {
+      filter: async (filters = {}) => {
+        const tags = loadTaskTags();
+        if (filters.created_by) {
+          return tags.filter(t => t.created_by === filters.created_by);
+        }
+        return tags;
+      },
+
+      create: async (data) => {
+        const tags = loadTaskTags();
+        const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const tag = { id, ...data };
+        tags.push(tag);
+        saveTaskTags(tags);
+        return tag;
+      },
+
+      update: async (id, data) => {
+        const tags = loadTaskTags();
+        const idx = tags.findIndex(t => t.id === id);
+        if (idx === -1) return null;
+        tags[idx] = { ...tags[idx], ...data };
+        saveTaskTags(tags);
+        return tags[idx];
+      },
+
+      delete: async (id) => {
+        const tags = loadTaskTags();
+        const filtered = tags.filter(t => t.id !== id);
+        saveTaskTags(filtered);
+        return { success: true };
       }
     },
 
