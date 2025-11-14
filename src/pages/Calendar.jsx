@@ -335,10 +335,10 @@ export default function CalendarPage() {
     }
     setCurrentDate(newDate);
 
-    if (calendarView === 'week' || calendarView === 'month') {
+    if (calendarView === 'month') {
       setIsFetchingMore(true);
-      const rangeStart = calendarView === 'week' ? startOfWeek(newDate) : startOfMonth(newDate);
-      const rangeEnd = calendarView === 'week' ? endOfWeek(newDate) : endOfMonth(newDate);
+      const rangeStart = startOfMonth(newDate);
+      const rangeEnd = endOfMonth(newDate);
       await loadGoogleEventsForRange(rangeStart, rangeEnd);
       setIsFetchingMore(false);
     }

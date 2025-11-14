@@ -642,7 +642,7 @@ export function DataProvider({ children }) {
 
       // Add task-scheduled events to the events list
       const taskScheduledEvents = allTasks
-        .filter(task => task.scheduled_start_time && task.status !== 'done')
+        .filter(task => task.scheduled_start_time && task.status !== 'done' && task.status !== 'wont_do')
         .map(task => ({
           id: `task-${task.id}`,
           title: task.title,
@@ -768,7 +768,7 @@ export function DataProvider({ children }) {
     // Update task-scheduled events when task changes
     setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== taskId));
     const updatedTask = { ...originalTask, ...updates };
-    if (updatedTask.scheduled_start_time && updatedTask.status !== 'done') {
+    if (updatedTask.scheduled_start_time && updatedTask.status !== 'done' && updatedTask.status !== 'wont_do') {
       const taskEvent = {
         id: `task-${taskId}`,
         title: updatedTask.title,
@@ -894,6 +894,8 @@ export function DataProvider({ children }) {
 
     const finalEventData = {
       ...eventData,
+      start_time: typeof eventData.start_time === 'string' ? eventData.start_time : eventData.start_time?.toISOString(),
+      end_time: typeof eventData.end_time === 'string' ? eventData.end_time : eventData.end_time?.toISOString(),
       category: eventData.category || categorizedResult.category || preferences?.default_event_category || 'personal',
       priority: eventData.priority || preferences?.default_event_priority || 'medium',
       color: eventData.color || categorizedResult.color || preferences?.event_categories?.find(c => c.name === (eventData.category || preferences?.default_event_category || 'personal'))?.color || '#8b5cf6',
@@ -930,7 +932,7 @@ export function DataProvider({ children }) {
     addTaskInFlightRef.current = true;
 
     const tempId = `temp-${Date.now()}-${Math.random()}`;
-     
+
     // Apply default and fast categorization values immediately
     const categorizedResult = fastCategorize(taskData, 'task', preferences);
 
@@ -947,7 +949,7 @@ export function DataProvider({ children }) {
         ...(user?.email ? [`__owner:${user.email}`] : []),
       ],
     };
-    
+
     const tempTask = { ...finalTaskData, id: tempId, created_date: new Date().toISOString() };
 
     setTasks(prev => [tempTask, ...prev]);
@@ -972,27 +974,40 @@ export function DataProvider({ children }) {
       });
       updateUndoRedoStates();
 
+      // Simplified task scheduling - just determine the slot and add UI event directly
       if (preferences?.auto_schedule_tasks_into_calendar) {
         setTimeout(async () => {
           try {
-            // Fetch latest data for scheduling to ensure accuracy
-            const allCurrentEvents = await timelit.entities.Event.filter({ created_by: user.email });
-            const allCurrentTasks = await timelit.entities.Task.filter({ created_by: user.email });
-            const scheduler = new SmartTaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
+            // Use current events and updated tasks (including the new task) for scheduling
+            const updatedTasks = [...tasks, normalized];
+            const scheduler = new SmartTaskScheduler(events, updatedTasks, preferences);
             const result = scheduler.scheduleTask(normalized);
 
-            if (result?.success) {
-              if (result.newEvents?.length > 0) {
-                const eventsWithTaskInfo = result.newEvents.map(event => ({
-                  ...event,
-                  category: normalized.category || event.category,
-                  color: normalized.color || event.color
-                }));
-                await bulkAddEvents(eventsWithTaskInfo);
-                console.log(`✅ Auto-scheduled task "${normalized.title}" to calendar at ${result.newEvents[0].start_time}`);
-                toast.success(`Task scheduled for ${new Date(result.newEvents[0].start_time).toLocaleDateString()}`);
-              }
+            if (result?.success && result.newEvents?.length > 0) {
+              const scheduledEvent = result.newEvents[0];
+              const taskEvent = {
+                id: `task-${normalized.id}`,
+                title: normalized.title,
+                start_time: scheduledEvent.start_time,
+                end_time: scheduledEvent.end_time,
+                category: normalized.category,
+                color: normalized.color,
+                priority: normalized.priority,
+                task_id: normalized.id,
+                task_status: normalized.status,
+                task_priority: normalized.priority,
+                isTaskEvent: true,
+                description: normalized.description,
+              };
+
+              // Add to events state directly
+              setEvents(prev => [...prev, taskEvent]);
+
+              // Update task with scheduled time
               await updateTask(normalized.id, result.taskUpdate);
+
+              console.log(`✅ Auto-scheduled task "${normalized.title}" to calendar at ${scheduledEvent.start_time}`);
+              toast.success(`Task scheduled for ${new Date(scheduledEvent.start_time).toLocaleDateString()}`);
             } else {
               console.log(`⚠️ Could not auto-schedule task "${normalized.title}": ${result?.reason || 'Unknown reason'}`);
               toast.info(`Task added but couldn't be auto-scheduled: ${result?.reason || 'No available time slots'}`);
@@ -1005,13 +1020,13 @@ export function DataProvider({ children }) {
       }
 
       addTaskInFlightRef.current = false;
-      return newTask;
+      return normalized;
     } catch (error) {
       setTasks(prev => prev.filter(t => t.id !== tempId));
       addTaskInFlightRef.current = false;
       throw error;
     }
-  }, [user, preferences, bulkAddEvents, updateTask, updateUndoRedoStates]);
+  }, [user, preferences, events, tasks, updateTask, updateUndoRedoStates]);
 
   const triggerCategorization = useCallback(async () => {
     if (categorizationProgress.isActive) {
