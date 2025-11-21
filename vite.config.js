@@ -12,7 +12,13 @@ export default defineConfig({
       'timelit.onrender.com',
       'localhost',
       '.onrender.com' // This allows all subdomains of onrender.com
-    ]
+    ],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
+    },
   },
   preview: { // testing
     host: '0.0.0.0',

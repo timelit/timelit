@@ -1,8 +1,8 @@
  // Local API client for Timelit infrastructure
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:5000/api';
+ const API_BASE_URL =
+   import.meta.env.VITE_API_URL ||
+   import.meta.env.VITE_API_BASE_URL ||
+   '/api';
 
 // --- Event helpers: map between backend camelCase and frontend snake_case ---
 const mapEventFromServer = (event) => {

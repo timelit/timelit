@@ -180,6 +180,7 @@ const EventCard = React.memo(({
 export default function CalendarPage() {
   const {
     events,
+    tasks,
     isLoading,
     error,
     deleteEvent,
@@ -190,7 +191,7 @@ export default function CalendarPage() {
     preferences,
     user,
     updateTask,
-   } = useData();
+  } = useData();
 
   const { currentDate, setCurrentDate } = useCalendarDate();
   const [selectedEventIds, setSelectedEventIds] = useState(new Set());

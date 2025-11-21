@@ -10,7 +10,7 @@ export default function LoginPage() {
     // Check if already authenticated
     const checkAuth = async () => {
       try {
-        const user = await User.me();
+        const user = await User.getCurrentUser();
         if (user) {
           window.location.href = '/';
         }
@@ -24,7 +24,8 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
-      await User.redirectToLogin();
+      // Redirect to Google OAuth
+      window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/google`;
     } catch (error) {
       console.error('Login failed:', error);
       setIsLoading(false);
