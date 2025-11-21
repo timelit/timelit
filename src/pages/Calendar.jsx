@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import EventDetailsModal from "../components/calendar/EventDetailsModal";
 import CreateEventModal from "../components/calendar/CreateEventModal";
 import EditEventModal from "../components/calendar/EditEventModal";
+// import SmartTaskScheduler from "./SmartTaskScheduler";
+import SmartTaskScheduler from "@/components/scheduling/SmartTaskScheduler";
 import { useCalendarDate } from "../components/providers/CalendarDateProvider";
 import {
   Tooltip,
