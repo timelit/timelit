@@ -1101,14 +1101,14 @@ export function DataProvider({ children }) {
         case 'EVENT_CREATE':
           setEvents(prev => prev.filter(e => e.id !== action.data.id));
           Event.delete(action.data.id).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
         case 'EVENT_UPDATE':
           setEvents(prev => prev.map(e => e.id === action.data.id ? action.data.previous : e));
           Event.update(action.data.id, action.data.previous).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
@@ -1117,14 +1117,14 @@ export function DataProvider({ children }) {
           if (action.data.task) {
             setTasks(prev => [action.data.task, ...prev]);
           }
-          Event.create({ ...action.data.event, created_by: user.email }).then((restoredEvent) => {
+          Event.create(action.data.event).then((restoredEvent) => {
             setEvents(prev => prev.map(e => e.id === action.data.event.id ? restoredEvent : e));
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
 
             if (action.data.task) {
-              Task.create({ ...action.data.task, created_by: user.email }).then((restoredTask) => {
+              Task.create(action.data.task).then((restoredTask) => {
                 setTasks(prev => prev.map(t => t.id === action.data.task.id ? restoredTask : t));
-                cache.invalidate(`tasks-${user.email}`);
+                cache.invalidate('tasks');
                 if (action.data.event.task_id && restoredTask.id !== action.data.task.id) {
                     Event.update(restoredEvent.id, { task_id: restoredTask.id });
                     setEvents(prev => prev.map(e => e.id === restoredEvent.id ? { ...e, task_id: restoredTask.id } : e));
@@ -1138,7 +1138,7 @@ export function DataProvider({ children }) {
           setTasks(prev => prev.filter(t => t.id !== action.data.id));
           setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== action.data.id));
           Task.delete(action.data.id).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1180,7 +1180,7 @@ export function DataProvider({ children }) {
             setEvents(prev => [...prev, taskEvent]);
           }
           Task.update(action.data.id, action.data.previous).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1207,39 +1207,21 @@ export function DataProvider({ children }) {
             };
             setEvents(prev => [...prev, taskEvent]);
           }
-          // Restore task-scheduled event if task was scheduled
-          if (action.data.task.scheduled_start_time && action.data.task.status !== 'done') {
-            const taskEvent = {
-              id: `task-${action.data.task.id}`,
-              title: action.data.task.title,
-              start_time: action.data.task.scheduled_start_time,
-              end_time: new Date(new Date(action.data.task.scheduled_start_time).getTime() + (action.data.task.duration || 60) * 60 * 1000).toISOString(),
-              category: action.data.task.category,
-              color: action.data.task.color,
-              priority: action.data.task.priority,
-              task_id: action.data.task.id,
-              task_status: action.data.task.status,
-              task_priority: action.data.task.priority,
-              isTaskEvent: true,
-              description: action.data.task.description,
-            };
-            setEvents(prev => [...prev, taskEvent]);
-          }
-          Task.create({ ...action.data.task, created_by: user.email }).then((restoredTask) => {
+          Task.create(action.data.task).then((restoredTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.task.id ? restoredTask : t));
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
 
             if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
               Promise.all(
                 action.data.linkedEvents.map(event =>
-                  Event.create({ ...event, created_by: user.email, task_id: restoredTask.id })
+                  Event.create({ ...event, task_id: restoredTask.id })
                 )
               ).then((restoredEvents) => {
                 setEvents(prev => {
                   const filtered = prev.filter(e => !action.data.linkedEvents.some(le => le.id === e.id));
                   return [...restoredEvents, ...filtered];
                 });
-                cache.invalidate(`events-${user.email}`);
+                cache.invalidate('events');
               });
             }
           });
@@ -1256,7 +1238,7 @@ export function DataProvider({ children }) {
     } finally {
       updateUndoRedoStates();
     }
-  }, [user, events, tasks, refreshData, updateUndoRedoStates]);
+  }, [events, tasks, refreshData, updateUndoRedoStates]);
 
   const redo = useCallback(async () => {
     const action = undoManager.redo();
@@ -1266,16 +1248,16 @@ export function DataProvider({ children }) {
       switch (action.type) {
         case 'EVENT_CREATE':
           setEvents(prev => [action.data, ...prev]);
-          Event.create({ ...action.data, created_by: user.email }).then((recreatedEvent) => {
+          Event.create(action.data).then((recreatedEvent) => {
             setEvents(prev => prev.map(e => e.id === action.data.id ? recreatedEvent : e));
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
         case 'EVENT_UPDATE':
           setEvents(prev => prev.map(e => e.id === action.data.id ? { ...e, ...action.data.updates } : e));
           Event.update(action.data.id, action.data.updates).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
@@ -1285,11 +1267,11 @@ export function DataProvider({ children }) {
             setTasks(prev => prev.filter(t => t.id !== action.data.task.id));
           }
           Event.delete(action.data.event.id).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           if (action.data.task) {
             Task.delete(action.data.task.id).then(() => {
-              cache.invalidate(`tasks-${user.email}`);
+              cache.invalidate('tasks');
             });
           }
           break;
@@ -1314,9 +1296,9 @@ export function DataProvider({ children }) {
             };
             setEvents(prev => [...prev, taskEvent]);
           }
-          Task.create({ ...action.data, created_by: user.email }).then((recreatedTask) => {
+          Task.create(action.data).then((recreatedTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.id ? recreatedTask : t));
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1339,7 +1321,7 @@ export function DataProvider({ children }) {
             return event;
           }));
           Task.update(action.data.id, action.data.updates).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1349,13 +1331,13 @@ export function DataProvider({ children }) {
             setEvents(prev => prev.filter(e => !action.data.linkedEvents.some(le => le.id === e.id)));
           }
           Task.delete(action.data.task.id).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
             Promise.all(
               action.data.linkedEvents.map(event => Event.delete(event.id))
             ).then(() => {
-                cache.invalidate(`events-${user.email}`);
+                cache.invalidate('events');
             });
           }
           break;
@@ -1371,7 +1353,7 @@ export function DataProvider({ children }) {
     } finally {
       updateUndoRedoStates();
     }
-  }, [user, events, tasks, refreshData, updateUndoRedoStates]);
+  }, [events, tasks, refreshData, updateUndoRedoStates]);
 
   useEffect(() => {
     if (!dataLoadedRef.current) loadAppData();
