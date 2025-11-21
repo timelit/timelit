@@ -1,4 +1,3 @@
-import React, { useState, useEffect } from 'react';
 import Layout from "./Layout.jsx";
 
 import Calendar from "./Calendar";
@@ -21,10 +20,7 @@ import GoogleOAuthInstructions from "./GoogleOAuthInstructions";
 
 import Settings from "./Settings";
 
-import LoginPage from "../components/auth/LoginPage";
-
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
-import { User } from '@/api/entities';
 
 const PAGES = {
     
@@ -63,90 +59,40 @@ function _getCurrentPage(url) {
     return pageName || Object.keys(PAGES)[0];
 }
 
-// Auth wrapper component
-function AuthWrapper({ children }) {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    setIsAuthenticated(false);
-                    setIsLoading(false);
-                    return;
-                }
-
-                // Verify token by trying to get current user
-                const user = await User.getCurrentUser();
-                if (user && user._id !== 'public-user') {
-                    setIsAuthenticated(true);
-                } else {
-                    setIsAuthenticated(false);
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
-                setIsAuthenticated(false);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        checkAuth();
-    }, []);
-
-    if (isLoading) {
-        return (
-            <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-                <div className="text-white">Loading...</div>
-            </div>
-        );
-    }
-
-    if (!isAuthenticated) {
-        return <LoginPage />;
-    }
-
-    return children;
-}
-
 // Create a wrapper component that uses useLocation inside the Router context
 function PagesContent() {
     const location = useLocation();
     const currentPage = _getCurrentPage(location.pathname);
 
     return (
-        <AuthWrapper>
-            <Layout currentPageName={currentPage}>
-                <Routes>
+        <Layout currentPageName={currentPage}>
+            <Routes>
 
-                        <Route path="/" element={<Calendar />} />
+                    <Route path="/" element={<Calendar />} />
 
 
-                    <Route path="/Calendar" element={<Calendar />} />
+                <Route path="/Calendar" element={<Calendar />} />
 
-                    <Route path="/AIAssistant" element={<AIAssistant />} />
+                <Route path="/AIAssistant" element={<AIAssistant />} />
 
-                    <Route path="/Tasks" element={<Tasks />} />
+                <Route path="/Tasks" element={<Tasks />} />
 
-                    <Route path="/Preferences" element={<Preferences />} />
+                <Route path="/Preferences" element={<Preferences />} />
 
-                    <Route path="/Statistics" element={<Statistics />} />
+                <Route path="/Statistics" element={<Statistics />} />
 
-                    <Route path="/OAuthGenerator" element={<OAuthGenerator />} />
+                <Route path="/OAuthGenerator" element={<OAuthGenerator />} />
 
-                    <Route path="/TermsOfService" element={<TermsOfService />} />
+                <Route path="/TermsOfService" element={<TermsOfService />} />
 
-                    <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
+                <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
 
-                    <Route path="/GoogleOAuthInstructions" element={<GoogleOAuthInstructions />} />
+                <Route path="/GoogleOAuthInstructions" element={<GoogleOAuthInstructions />} />
 
-                    <Route path="/Settings" element={<Settings />} />
+                <Route path="/Settings" element={<Settings />} />
 
-                </Routes>
-            </Layout>
-        </AuthWrapper>
+            </Routes>
+        </Layout>
     );
 }
 
