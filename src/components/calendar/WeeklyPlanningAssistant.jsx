@@ -8,8 +8,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { InvokeLLM } from "@/api/integrations";
 import { Event } from "@/api/entities";
 import { Task } from "@/api/entities";
-import { User } from "@/api/entities"; 
-import { UserPreferences } from "@/api/entities";
 import { format, startOfWeek, endOfWeek, addDays } from 'date-fns';
 
 export default function WeeklyPlanningAssistant({ onSuggestEvent }) {

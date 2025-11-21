@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { User } from '@/api/entities';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 

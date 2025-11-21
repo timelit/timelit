@@ -68,17 +68,6 @@ const saveTaskTags = (tags) => {
 class ApiClient {
   constructor() {
     this.baseURL = API_BASE_URL;
-    this.token = localStorage.getItem('token');
-  }
-
-  setToken(token) {
-    this.token = token;
-    localStorage.setItem('token', token);
-  }
-
-  removeToken() {
-    this.token = null;
-    localStorage.removeItem('token');
   }
 
   async request(endpoint, options = {}) {
@@ -90,10 +79,6 @@ class ApiClient {
       },
       ...options
     };
-
-    if (this.token) {
-      config.headers.Authorization = `Bearer ${this.token}`;
-    }
 
     try {
       const response = await fetch(url, config);
@@ -110,38 +95,6 @@ class ApiClient {
     }
   }
 
-  // Auth methods
-  auth = {
-    login: async (credentials) => {
-      const response = await this.request('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify(credentials)
-      });
-      if (response.token) {
-        this.setToken(response.token);
-      }
-      return response;
-    },
-
-    register: async (userData) => {
-      const response = await this.request('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(userData)
-      });
-      if (response.token) {
-        this.setToken(response.token);
-      }
-      return response;
-    },
-
-    logout: () => {
-      this.removeToken();
-    },
-
-    getCurrentUser: async () => {
-      return await this.request('/auth/me');
-    }
-  };
 
   // Entities
   entities = {
@@ -290,33 +243,6 @@ class ApiClient {
       }
     },
 
-    UserPreferences: {
-      get: async () => {
-        const response = await this.request('/users/preferences');
-        return response.data;
-      },
-
-      filter: async (filters = {}) => {
-        const response = await this.request('/users/preferences');
-        return response.data ? [response.data] : [];
-      },
-
-      create: async (data) => {
-        const response = await this.request('/users/preferences', {
-          method: 'PUT',
-          body: JSON.stringify(data)
-        });
-        return response.data;
-      },
-
-      update: async (id, data) => {
-        const response = await this.request('/users/preferences', {
-          method: 'PUT',
-          body: JSON.stringify(data)
-        });
-        return response.data;
-      }
-    },
 
     MoodEntry: {
       filter: async (filters = {}) => {
@@ -356,24 +282,6 @@ class ApiClient {
     }
   };
 
-  // Functions (Google OAuth)
-  functions = {
-    googleCalendarOAuth: async () => {
-      // Redirect to Google OAuth
-      window.location.href = `${this.baseURL}/auth/google`;
-    },
-
-    googleCalendarWebhook: async (data) => {
-      // Handle webhook data
-      return data;
-    },
-
-    deleteUserAccount: async () => {
-      return await this.request('/auth/deleteaccount', {
-        method: 'DELETE'
-      });
-    }
-  };
 
   // Integrations
   integrations = {
