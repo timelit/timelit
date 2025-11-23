@@ -59,10 +59,78 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Task Lists routes
+
+// @desc    Get all task lists
+// @route   GET /api/tasks/lists
+// @access  Private
+router.get('/lists', async (req, res) => {
+  try {
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+    console.log('HIT: /api/tasks/lists route');
+    console.log('TaskList query:', query);
+
+    const lists = await TaskList.find(query).sort({ createdAt: -1 });
+
+    console.log('Found lists:', lists.length);
+
+    res.status(200).json({
+      success: true,
+      count: lists.length,
+      data: lists
+    });
+  } catch (error) {
+    console.error('Error in /api/tasks/lists:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// @desc    Get all task lists
+// @route   GET /api/tasks/tasklists
+// @access  Private
+router.get('/tasklists', async (req, res) => {
+  try {
+    let query = {};
+    if (req.user) {
+      query.createdBy = req.user._id;
+    }
+
+
+    const lists = await TaskList.find(query).sort({ createdAt: -1 });
+
+
+    res.status(200).json({
+      success: true,
+      count: lists.length,
+      data: lists
+    });
+  } catch (error) {
+    console.error('Error in /api/tasks/tasklists:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
 // @desc    Get single task
 // @route   GET /api/tasks/:id
 // @access  Private
-router.get('/:id', async (req, res) => {
+router.get('/:id([0-9a-fA-F]{24})', async (req, res) => {
+
   try {
     let query = { _id: req.params.id };
     if (req.user) {
@@ -189,33 +257,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Task Lists routes
-
-// @desc    Get all task lists
-// @route   GET /api/tasks/lists
-// @access  Private
-router.get('/lists', async (req, res) => {
-  try {
-    let query = {};
-    if (req.user) {
-      query.createdBy = req.user._id;
-    }
-
-    const lists = await TaskList.find(query).sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: lists.length,
-      data: lists
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
 
 // @desc    Create new task list
 // @route   POST /api/tasks/lists

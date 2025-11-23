@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useData } from "../components/providers/DataProvider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -17,11 +17,33 @@ import { timelit } from "@/api/timelitClient";
 import NotificationPermission from "../components/notifications/NotificationPermission";
 
 export default function SettingsPage() {
-  const { user, preferences, updatePreferences, isLoading } = useData();
+  const { updatePreferences, isLoading } = useData();
+  const [preferences, setPreferences] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentSection, setCurrentSection] = useState("general");
   const [pendingChanges, setPendingChanges] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
+
+  // Load preferences on component mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        setIsPreferencesLoading(true);
+        const response = await fetch('/api/users/preferences');
+        const data = await response.json();
+        if (data.success) {
+          setPreferences(data.data || {});
+        }
+      } catch (error) {
+        console.error('Failed to load preferences:', error);
+        setPreferences({});
+      } finally {
+        setIsPreferencesLoading(false);
+      }
+    };
+    loadPreferences();
+  }, []);
 
   const handlePreferenceChange = (key, value) => {
     setPendingChanges(prev => ({ ...prev, [key]: value }));
@@ -84,7 +106,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoading || !preferences) {
+  if (isLoading || isPreferencesLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-neutral-900">
         <div className="text-sm text-muted-foreground">Loading settings...</div>

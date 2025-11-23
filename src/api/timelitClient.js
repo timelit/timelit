@@ -179,7 +179,7 @@ class ApiClient {
 
     TaskList: {
       filter: async (filters = {}) => {
-        const response = await this.request('/tasks/lists');
+        const response = await this.request('/tasks/tasklists');
         return response.data;
       },
 

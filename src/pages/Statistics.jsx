@@ -62,14 +62,25 @@ import { toast } from 'sonner';
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#6366f1', '#ef4444', '#14b8a6'];
 
 const StatisticsPage = () => {
-  const { user, events, tasks, isLoading, error, preferences } = useData();
+  const { events, tasks, isLoading, error } = useData();
   const [stats, setStats] = useState(null);
   const [aiInsights, setAiInsights] = useState(null);
   const [timeRange, setTimeRange] = useState('week');
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [preferences, setPreferences] = useState({
+    event_categories: [
+      {name: "work", color: "#3b82f6"},
+      {name: "personal", color: "#8b5cf6"},
+      {name: "meeting", color: "#ec4899"},
+      {name: "appointment", color: "#10b981"},
+      {name: "reminder", color: "#f59e0b"},
+      {name: "travel", color: "#6366f1"},
+      {name: "social", color: "#ef4444"}
+    ]
+  });
 
   const calculateStats = useCallback(() => {
-    if (!user || !events || !tasks) {
+    if (!events || !tasks) {
       return;
     }
 
@@ -361,7 +372,7 @@ const StatisticsPage = () => {
       console.error("Failed to calculate statistics:", error);
       toast.error("Error calculating statistics");
     }
-  }, [user, events, tasks, timeRange, preferences]);
+  }, [events, tasks, timeRange, preferences]);
 
   const generateAIInsights = useCallback(async () => {
     if (!stats) return; // Stats must be available to generate insights
@@ -429,10 +440,10 @@ Provide concise insights on: 1) Overall productivity, 2) Time allocation, 3) Tas
   }, [stats, timeRange, setAiInsights, setIsLoadingInsights]);
 
   useEffect(() => {
-    if (!isLoading && user && events && tasks) {
+    if (!isLoading && events && tasks) {
       calculateStats();
     }
-  }, [isLoading, user, events, tasks, timeRange, calculateStats]);
+  }, [isLoading, events, tasks, timeRange, calculateStats]);
 
   // Generate insights only when stats are available and insights haven't been loaded yet
   // or if insights were cleared by a timeRange change

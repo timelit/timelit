@@ -48,7 +48,7 @@ const TaskSidebarItem = ({ icon: Icon, label, count, isActive, onClick, color })
 
 export default function TasksPage() {
   // NEW: Added updatePreferences to useData destructuring
-  const { user, tasks, isLoading, error, addTask, updateTask, deleteTask, preferences, updatePreferences } = useData();
+  const { tasks, isLoading, error, addTask, updateTask, deleteTask, preferences, updatePreferences } = useData();
 
   const [activeView, setActiveView] = useState('inbox');
   const [selectedListId, setSelectedListId] = useState(null);
@@ -113,11 +113,10 @@ export default function TasksPage() {
   // Load lists and tags
   useEffect(() => {
     const loadListsAndTags = async () => {
-      if (!user) return;
       try {
         const [listsData, tagsData] = await Promise.all([
-          timelit.entities.TaskList.filter({ created_by: user.email }),
-          timelit.entities.TaskTag.filter({ created_by: user.email })
+          timelit.entities.TaskList.filter({}),
+          timelit.entities.TaskTag.filter({})
         ]);
         setLists(listsData || []);
         setTags(tagsData || []);
@@ -126,7 +125,7 @@ export default function TasksPage() {
       }
     };
     loadListsAndTags();
-  }, [user]);
+  }, []);
 
   // Optimized filter tasks - REMOVED overdue and no_due_date cases
   const filteredTasks = useMemo(() => {
@@ -281,8 +280,7 @@ export default function TasksPage() {
     try {
       const newList = await timelit.entities.TaskList.create({
         name: newListName,
-        color: '#3b82f6',
-        created_by: user.email
+        color: '#3b82f6'
       });
       setLists([...lists, newList]);
       setNewListName("");
@@ -299,8 +297,7 @@ export default function TasksPage() {
     try {
       const newTag = await timelit.entities.TaskTag.create({
         name: newTagName,
-        color: '#8b5cf6',
-        created_by: user.email
+        color: '#8b5cf6'
       });
       setTags([...tags, newTag]);
       setNewTagName("");

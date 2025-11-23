@@ -869,6 +869,15 @@ export function DataProvider({ children }) {
       tags: taskData.tags || [],
     };
 
+    // Safeguard: If task has no due date, default to today or within next 3 days
+    if (!finalTaskData.due_date) {
+      const today = new Date();
+      const randomDays = Math.floor(Math.random() * 3); // 0-2 days
+      const defaultDate = new Date(today);
+      defaultDate.setDate(today.getDate() + randomDays);
+      finalTaskData.due_date = defaultDate.toISOString().split('T')[0];
+    }
+
     const tempTask = { ...finalTaskData, id: tempId, created_date: new Date().toISOString() };
 
     setTasks(prev => [tempTask, ...prev]);
@@ -878,6 +887,7 @@ export function DataProvider({ children }) {
       const normalized = normalizeTask(createdTask);
 
       console.log('✅ Task created:', normalized);
+      console.log('(a) Task created → Task added to local state');
 
       // Replace temp task with real task from server
       setTasks(prev => {
@@ -894,6 +904,49 @@ export function DataProvider({ children }) {
       updateUndoRedoStates();
 
       toast.success('Task added!');
+
+      // Auto-schedule task into calendar if enabled
+      if (preferences?.auto_schedule_tasks_into_calendar) {
+        setTimeout(async () => {
+          try {
+            // Use the current tasks state plus the newly created task
+            const currentTasks = await Task.filter({}, "-created_date");
+            const allTasks = currentTasks.map(normalizeTask);
+            const scheduler = new SmartTaskScheduler(events, allTasks, preferences);
+            const result = scheduler.scheduleTask(normalized);
+
+            if (result?.success && result.newEvents?.length > 0) {
+              const scheduledEvent = result.newEvents[0];
+              const taskEvent = {
+                id: `task-${normalized.id}`,
+                title: normalized.title,
+                start_time: scheduledEvent.start_time,
+                end_time: scheduledEvent.end_time,
+                category: normalized.category,
+                color: normalized.color,
+                priority: normalized.priority,
+                task_id: normalized.id,
+                task_status: normalized.status,
+                task_priority: normalized.priority,
+                isTaskEvent: true,
+                description: normalized.description,
+              };
+
+              setEvents(prev => {
+                const newEvents = [...prev, taskEvent];
+                console.log('(b) Task added to calendar data → Calendar re-renders');
+                console.log('✅ Task auto-scheduled:', taskEvent);
+                return newEvents;
+              });
+              await updateTask(normalized.id, result.taskUpdate);
+            } else {
+              console.log('⚠️ Task not auto-scheduled - no suitable time found');
+            }
+          } catch (error) {
+            console.error("Auto-scheduling error:", error);
+          }
+        }, 100);
+      }
 
       addTaskInFlightRef.current = false;
       return normalized;

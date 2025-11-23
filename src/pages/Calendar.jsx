@@ -191,9 +191,10 @@ export default function CalendarPage() {
     hideGoogleEvent,
     loadGoogleEventsForRange,
     preferences,
-    user,
     updateTask,
   } = useData();
+
+  console.log('(c) Calendar re-renders with events:', events?.length || 0);
 
   const { currentDate, setCurrentDate } = useCalendarDate();
   const [selectedEventIds, setSelectedEventIds] = useState(new Set());
