@@ -4,23 +4,16 @@ const OpenAI = require('openai');
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes are now public for demo purposes
-router.use((req, res, next) => {
-  // Mock authentication for demo
-  req.user = { _id: 'demo-user', email: 'demo@example.com' };
-  next();
-});
-// router.use(protect);
+router.use(protect);
 
-// Initialize OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Helper function to get Google Calendar client
 const getGoogleCalendarClient = (tokens) => {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -37,9 +30,6 @@ const getGoogleCalendarClient = (tokens) => {
   return google.calendar({ version: 'v3', auth: oauth2Client });
 };
 
-// @desc    Invoke LLM
-// @route   POST /api/integrations/llm
-// @access  Private
 router.post('/llm', async (req, res) => {
   try {
     const { prompt, model = 'gpt-3.5-turbo', maxTokens = 1000 } = req.body;
@@ -51,7 +41,6 @@ router.post('/llm', async (req, res) => {
       });
     }
 
-    // For demo purposes, return a mock response without calling OpenAI
     const mockResponse = `Mock LLM response for prompt: "${prompt}". This is a demo response since OpenAI API key is not configured.`;
 
     res.status(200).json({
@@ -62,18 +51,14 @@ router.post('/llm', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('LLM API error:', error);
+    logger.error('LLM API error:', error);
     res.status(500).json({
       success: false,
-      message: 'LLM service error',
-      error: error.message
+      message: 'LLM service failed'
     });
   }
 });
 
-// @desc    Send email
-// @route   POST /api/integrations/email
-// @access  Private
 router.post('/email', async (req, res) => {
   try {
     const { to, subject, text, html } = req.body;
@@ -85,8 +70,7 @@ router.post('/email', async (req, res) => {
       });
     }
 
-    // Create transporter
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: process.env.EMAIL_HOST,
       port: process.env.EMAIL_PORT,
       secure: process.env.EMAIL_PORT == 465,
@@ -96,7 +80,6 @@ router.post('/email', async (req, res) => {
       }
     });
 
-    // Send email
     const info = await transporter.sendMail({
       from: `"Timelit" <${process.env.EMAIL_USER}>`,
       to,
@@ -112,18 +95,14 @@ router.post('/email', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Email service error:', error);
+    logger.error('Email service error:', error);
     res.status(500).json({
       success: false,
-      message: 'Email service error',
-      error: error.message
+      message: 'Email service failed'
     });
   }
 });
 
-// @desc    Generate image (placeholder - would need DALL-E or similar)
-// @route   POST /api/integrations/image
-// @access  Private
 router.post('/image', async (req, res) => {
   try {
     const { prompt, size = '1024x1024' } = req.body;
@@ -150,53 +129,38 @@ router.post('/image', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Image generation error:', error);
+    logger.error('Image generation error:', error);
     res.status(500).json({
       success: false,
-      message: 'Image generation error',
-      error: error.message
+      message: 'Image generation failed'
     });
   }
 });
 
-// @desc    Upload file (placeholder - would need cloud storage)
-// @route   POST /api/integrations/upload
-// @access  Private
 router.post('/upload', (req, res) => {
-  // This would require multer setup and cloud storage integration
-  // For now, return a placeholder response
   res.status(200).json({
     success: true,
-    message: 'File upload functionality would be implemented here',
+    message: 'File upload functionality not yet implemented',
     data: {
       url: 'https://example.com/uploaded-file'
     }
   });
 });
 
-// @desc    Create file signed URL (placeholder)
-// @route   POST /api/integrations/signed-url
-// @access  Private
 router.post('/signed-url', (req, res) => {
-  // This would create signed URLs for secure file access
   res.status(200).json({
     success: true,
-    message: 'Signed URL functionality would be implemented here',
+    message: 'Signed URL functionality not yet implemented',
     data: {
       signedUrl: 'https://example.com/signed-file-url'
     }
   });
 });
 
-// @desc    Extract data from uploaded file (placeholder)
-// @route   POST /api/integrations/extract-data
-// @access  Private
 router.post('/extract-data', async (req, res) => {
   try {
     const { fileUrl, extractionType } = req.body;
 
-    // This would use AI to extract data from files
-    // For now, return a placeholder response
     const mockData = {
       text: 'Extracted text content would appear here',
       metadata: {
@@ -210,20 +174,17 @@ router.post('/extract-data', async (req, res) => {
       data: mockData
     });
   } catch (error) {
+    logger.error('Data extraction error:', error);
     res.status(500).json({
       success: false,
-      message: 'Data extraction error',
-      error: error.message
+      message: 'Data extraction failed'
     });
   }
 });
 
-// @desc    Disconnect Google Calendar
-// @route   POST /api/integrations/google-calendar/disconnect
-// @access  Private
 router.post('/google-calendar/disconnect', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.user._id, {
+    await User.findByIdAndUpdate(req.user._id, {
       googleCalendarTokens: null,
       googleCalendarIntegrated: false,
       googleCalendarSyncEnabled: false,
@@ -235,18 +196,14 @@ router.post('/google-calendar/disconnect', async (req, res) => {
       message: 'Google Calendar disconnected successfully'
     });
   } catch (error) {
-    console.error('Disconnect error:', error);
+    logger.error('Disconnect error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to disconnect Google Calendar',
-      error: error.message
+      message: 'Failed to disconnect Google Calendar'
     });
   }
 });
 
-// @desc    Sync Google Calendar
-// @route   POST /api/integrations/google-calendar/sync
-// @access  Private
 router.post('/google-calendar/sync', async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -260,7 +217,6 @@ router.post('/google-calendar/sync', async (req, res) => {
 
     const calendar = getGoogleCalendarClient(user.googleCalendarTokens);
 
-    // Get upcoming events from Google Calendar
     const response = await calendar.events.list({
       calendarId: 'primary',
       timeMin: new Date().toISOString(),
@@ -269,7 +225,6 @@ router.post('/google-calendar/sync', async (req, res) => {
       orderBy: 'startTime'
     });
 
-    // Update last sync time
     await User.findByIdAndUpdate(req.user._id, {
       lastGoogleCalendarSync: new Date()
     });
@@ -282,18 +237,14 @@ router.post('/google-calendar/sync', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Sync error:', error);
+    logger.error('Sync error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to sync Google Calendar',
-      error: error.message
+      message: 'Failed to sync Google Calendar'
     });
   }
 });
 
-// @desc    Get Google Calendar events
-// @route   GET /api/integrations/google-calendar/events
-// @access  Private
 router.get('/google-calendar/events', async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -322,18 +273,14 @@ router.get('/google-calendar/events', async (req, res) => {
       data: response.data.items
     });
   } catch (error) {
-    console.error('Get events error:', error);
+    logger.error('Get events error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get Google Calendar events',
-      error: error.message
+      message: 'Failed to get Google Calendar events'
     });
   }
 });
 
-// @desc    Create event in Google Calendar
-// @route   POST /api/integrations/google-calendar/events
-// @access  Private
 router.post('/google-calendar/events', async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -372,11 +319,10 @@ router.post('/google-calendar/events', async (req, res) => {
       data: response.data
     });
   } catch (error) {
-    console.error('Create event error:', error);
+    logger.error('Create event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create Google Calendar event',
-      error: error.message
+      message: 'Failed to create Google Calendar event'
     });
   }
 });

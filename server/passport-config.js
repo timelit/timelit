@@ -1,6 +1,8 @@
 const passport = require('passport');
+const crypto = require('crypto');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('./models/User');
+const logger = require('./utils/logger');
 
 // Serialize user for session
 passport.serializeUser((user, done) => {
@@ -13,6 +15,7 @@ passport.deserializeUser(async (id, done) => {
     const user = await User.findById(id);
     done(null, user);
   } catch (error) {
+    logger.error('Deserialization error:', error);
     done(error, null);
   }
 });
@@ -24,35 +27,32 @@ passport.use(new GoogleStrategy({
   callbackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/callback`
 }, async (accessToken, refreshToken, profile, done) => {
   try {
-    // Check if user already exists
     let user = await User.findOne({ googleId: profile.id });
 
     if (user) {
       return done(null, user);
     }
 
-    // Check if user exists with same email
     user = await User.findOne({ email: profile.emails[0].value });
 
     if (user) {
-      // Link Google account to existing user
       user.googleId = profile.id;
       user.avatar = profile.photos[0].value;
       await user.save();
       return done(null, user);
     }
 
-    // Create new user
     user = await User.create({
       name: profile.displayName,
       email: profile.emails[0].value,
       googleId: profile.id,
       avatar: profile.photos[0].value,
-      password: Math.random().toString(36) // Random password for Google users
+      password: crypto.randomBytes(32).toString('hex')
     });
 
     done(null, user);
   } catch (error) {
+    logger.error('Google OAuth strategy error:', error);
     done(error, null);
   }
 }));
@@ -64,20 +64,20 @@ passport.use('google-calendar', new GoogleStrategy({
   callbackURL: `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/auth/google/calendar/callback`
 }, async (accessToken, refreshToken, profile, done) => {
   try {
-    // Find user by email (assuming user is logged in)
     const user = await User.findOne({ email: profile.emails[0].value });
 
     if (!user) {
+      logger.warn(`User not found for Google Calendar OAuth: ${profile.emails[0].value}`);
       return done(new Error('User not found'), null);
     }
 
-    // Return user with tokens
     done(null, user, {
       access_token: accessToken,
       refresh_token: refreshToken,
-      expiry_date: Date.now() + (3600 * 1000) // 1 hour from now
+      expiry_date: Date.now() + (3600 * 1000)
     });
   } catch (error) {
+    logger.error('Google Calendar OAuth strategy error:', error);
     done(error, null);
   }
 }));

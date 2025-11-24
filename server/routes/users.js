@@ -1,73 +1,56 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const User = require('../models/User');
 const MoodEntry = require('../models/MoodEntry');
 const PomodoroSession = require('../models/PomodoroSession');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes are now public for demo purposes
-// router.use(protect);
+router.use(protect);
 
-// @desc    Get user preferences
-// @route   GET /api/users/preferences
-// @access  Private
-router.get('/preferences', (req, res) => {
-  // For demo purposes, return default preferences without database lookup
-  res.status(200).json({
-    success: true,
-    data: {}
-  });
+router.get('/preferences', async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    res.status(200).json({
+      success: true,
+      data: user.preferences || {}
+    });
+  } catch (error) {
+    logger.error('Get preferences error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get preferences'
+    });
+  }
 });
 
-// @desc    Update user preferences
-// @route   PUT /api/users/preferences
-// @access  Private
 router.put('/preferences', async (req, res) => {
   try {
-    let user;
-    if (req.user) {
-      user = await User.findByIdAndUpdate(
-        req.user._id,
-        { preferences: req.body },
-        { new: true, runValidators: true }
-      );
-    } else {
-      // For demo purposes, just return the preferences without database update
-      res.status(200).json({
-        success: true,
-        data: req.body
-      });
-      return;
-    }
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { preferences: req.body },
+      { new: true, runValidators: true }
+    );
 
     res.status(200).json({
       success: true,
       data: user.preferences
     });
   } catch (error) {
+    logger.error('Update preferences error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update preferences'
     });
   }
 });
 
-// Mood tracking routes
-
-// @desc    Get mood entries
-// @route   GET /api/users/mood
-// @access  Private
 router.get('/mood', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    let query = {};
-    if (req.user) {
-      query.createdBy = req.user._id;
-    }
+    let query = { createdBy: req.user._id };
 
     if (startDate && endDate) {
       query.date = {
@@ -84,25 +67,19 @@ router.get('/mood', async (req, res) => {
       data: entries
     });
   } catch (error) {
+    logger.error('Get mood entries error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch mood entries'
     });
   }
 });
 
-// @desc    Create or update mood entry
-// @route   POST /api/users/mood
-// @access  Private
 router.post('/mood', async (req, res) => {
   try {
     const { date, rating, note, factors } = req.body;
 
-    let query = { date };
-    if (req.user) {
-      query.createdBy = req.user._id;
-    }
+    let query = { date, createdBy: req.user._id };
 
     const existingEntry = await MoodEntry.findOne(query);
 
@@ -118,14 +95,9 @@ router.post('/mood', async (req, res) => {
         date,
         rating,
         note,
-        factors
+        factors,
+        createdBy: req.user._id
       };
-
-      if (req.user) {
-        entryData.createdBy = req.user._id;
-      } else {
-        entryData.createdBy = new mongoose.Types.ObjectId();
-      }
 
       entry = await MoodEntry.create(entryData);
     }
@@ -135,27 +107,19 @@ router.post('/mood', async (req, res) => {
       data: entry
     });
   } catch (error) {
+    logger.error('Create/update mood entry error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to save mood entry'
     });
   }
 });
 
-// Pomodoro routes
-
-// @desc    Get pomodoro sessions
-// @route   GET /api/users/pomodoro
-// @access  Private
 router.get('/pomodoro', async (req, res) => {
   try {
     const { date } = req.query;
 
-    let query = {};
-    if (req.user) {
-      query.createdBy = req.user._id;
-    }
+    let query = { createdBy: req.user._id };
 
     if (date) {
       query.date = date;
@@ -169,25 +133,19 @@ router.get('/pomodoro', async (req, res) => {
       data: sessions
     });
   } catch (error) {
+    logger.error('Get pomodoro sessions error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch pomodoro sessions'
     });
   }
 });
 
-// @desc    Update pomodoro session
-// @route   PUT /api/users/pomodoro/:date
-// @access  Private
 router.put('/pomodoro/:date', async (req, res) => {
   try {
     const { cyclesCompleted, totalFocusTime, totalBreakTime, sessions } = req.body;
 
-    let query = { date: req.params.date };
-    if (req.user) {
-      query.createdBy = req.user._id;
-    }
+    let query = { date: req.params.date, createdBy: req.user._id };
 
     let session = await PomodoroSession.findOne(query);
 
@@ -203,14 +161,9 @@ router.put('/pomodoro/:date', async (req, res) => {
         cyclesCompleted,
         totalFocusTime,
         totalBreakTime,
-        sessions
+        sessions,
+        createdBy: req.user._id
       };
-
-      if (req.user) {
-        sessionData.createdBy = req.user._id;
-      } else {
-        sessionData.createdBy = new mongoose.Types.ObjectId();
-      }
 
       session = await PomodoroSession.create(sessionData);
     }
@@ -220,10 +173,10 @@ router.put('/pomodoro/:date', async (req, res) => {
       data: session
     });
   } catch (error) {
+    logger.error('Update pomodoro session error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update pomodoro session'
     });
   }
 });
