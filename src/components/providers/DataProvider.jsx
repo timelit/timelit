@@ -917,27 +917,9 @@ export function DataProvider({ children }) {
 
             if (result?.success && result.newEvents?.length > 0) {
               const scheduledEvent = result.newEvents[0];
-              const taskEvent = {
-                id: `task-${normalized.id}`,
-                title: normalized.title,
-                start_time: scheduledEvent.start_time,
-                end_time: scheduledEvent.end_time,
-                category: normalized.category,
-                color: normalized.color,
-                priority: normalized.priority,
-                task_id: normalized.id,
-                task_status: normalized.status,
-                task_priority: normalized.priority,
-                isTaskEvent: true,
-                description: normalized.description,
-              };
-
-              setEvents(prev => {
-                const newEvents = [...prev, taskEvent];
-                console.log('(b) Task added to calendar data → Calendar re-renders');
-                console.log('✅ Task auto-scheduled:', taskEvent);
-                return newEvents;
-              });
+              await addEvent(scheduledEvent);
+              console.log('(b) Task added to calendar data → Calendar re-renders');
+              console.log('✅ Task auto-scheduled:', scheduledEvent);
               await updateTask(normalized.id, result.taskUpdate);
             } else {
               console.log('⚠️ Task not auto-scheduled - no suitable time found');

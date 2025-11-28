@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -115,6 +115,9 @@ export default function CreateEventModal({ isOpen, onClose, onEventCreate, initi
             <CalendarIcon className="w-6 h-6 text-blue-500" />
             Create New Event
           </DialogTitle>
+          <DialogDescription className="text-neutral-400">
+            Fill in the details to create a new event in your calendar.
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
