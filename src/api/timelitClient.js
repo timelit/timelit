@@ -72,11 +72,17 @@ class ApiClient {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    
+    // Add authentication token if available
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+      ...options.headers
+    };
+
     const config = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
+      headers,
       ...options
     };
 
@@ -84,11 +90,47 @@ class ApiClient {
       const response = await fetch(url, config);
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'API request failed');
+        // Handle empty responses or non-JSON responses gracefully
+        let errorMessage = 'API request failed';
+        let errorDetails = null;
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            errorMessage = error.message || errorMessage;
+            errorDetails = error;
+          } else {
+            const text = await response.text();
+            if (text) {
+              errorMessage = `HTTP ${response.status}: ${text}`;
+            } else {
+              errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            }
+          }
+        } catch (parseError) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          console.warn('Failed to parse error response:', parseError);
+        }
+        
+        const error = new Error(errorMessage);
+        if (errorDetails) {
+          error.details = errorDetails;
+        }
+        throw error;
       }
 
-      return await response.json();
+      // Handle empty responses
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const text = await response.text();
+        if (!text.trim()) {
+          return { success: true, data: null };
+        }
+        return JSON.parse(text);
+      }
+      
+      return await response.text();
     } catch (error) {
       console.error('API request error:', error);
       throw error;
@@ -179,7 +221,7 @@ class ApiClient {
 
     TaskList: {
       filter: async (filters = {}) => {
-        const response = await this.request('/tasks/tasklists');
+        const response = await this.request('/tasks/lists');
         return response.data;
       },
 
@@ -244,102 +286,11 @@ class ApiClient {
     },
 
 
-    MoodEntry: {
-      filter: async (filters = {}) => {
-        const queryString = new URLSearchParams(filters).toString();
-        const response = await this.request(`/users/mood?${queryString}`);
-        return response.data;
-      },
 
-      create: async (data) => {
-        const response = await this.request('/users/mood', {
-          method: 'POST',
-          body: JSON.stringify(data)
-        });
-        return response.data;
-      },
-
-      update: async (id, data) => {
-        // Mood entries are updated via POST (upsert)
-        return await this.entities.MoodEntry.create(data);
-      }
-    },
-
-    PomodoroSession: {
-      filter: async (filters = {}) => {
-        const queryString = new URLSearchParams(filters).toString();
-        const response = await this.request(`/users/pomodoro?${queryString}`);
-        return response.data;
-      },
-
-      update: async (id, data) => {
-        const response = await this.request(`/users/pomodoro/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify(data)
-        });
-        return response.data;
-      }
-    }
   };
 
 
-  // Integrations
-  integrations = {
-    Core: {
-      InvokeLLM: async (params) => {
-        const response = await this.request('/integrations/llm', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
 
-      SendEmail: async (params) => {
-        const response = await this.request('/integrations/email', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
-
-      UploadFile: async (params) => {
-        const response = await this.request('/integrations/upload', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
-
-      GenerateImage: async (params) => {
-        const response = await this.request('/integrations/image', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
-
-      ExtractDataFromUploadedFile: async (params) => {
-        const response = await this.request('/integrations/extract-data', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
-
-      CreateFileSignedUrl: async (params) => {
-        const response = await this.request('/integrations/signed-url', {
-          method: 'POST',
-          body: JSON.stringify(params)
-        });
-        return response.data;
-      },
-
-      UploadPrivateFile: async (params) => {
-        // Similar to UploadFile but for private files
-        return await this.integrations.Core.UploadFile(params);
-      }
-    }
-  };
 }
 
 // Create and export the client instance

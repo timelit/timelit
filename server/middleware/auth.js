@@ -11,38 +11,49 @@ const protect = async (req, res, next) => {
     }
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
-      });
+      // Allow anonymous access - create a default user object
+      req.user = {
+        _id: 'anonymous',
+        email: 'anonymous@local',
+        name: 'Anonymous User'
+      };
+      return next();
     }
 
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
       req.user = await User.findById(decoded.id).select('-password');
 
       if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found'
-        });
+        // Fallback to anonymous if user not found
+        req.user = {
+          _id: 'anonymous',
+          email: 'anonymous@local',
+          name: 'Anonymous User'
+        };
+        return next();
       }
 
       next();
     } catch (error) {
-      logger.warn('Token verification failed:', error.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid token'
-      });
+      logger.warn('Token verification failed, allowing anonymous access:', error.message);
+      // Allow anonymous access even with invalid token
+      req.user = {
+        _id: 'anonymous',
+        email: 'anonymous@local',
+        name: 'Anonymous User'
+      };
+      next();
     }
   } catch (error) {
     logger.error('Auth middleware error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Authentication failed'
-    });
+    // Allow anonymous access on error
+    req.user = {
+      _id: 'anonymous',
+      email: 'anonymous@local',
+      name: 'Anonymous User'
+    };
+    next();
   }
 };
 

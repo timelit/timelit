@@ -41,7 +41,7 @@ export default function GoogleCalendarSetup() {
     setIsLoading(true);
     try {
       // Redirect to Google OAuth
-      window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/google/calendar`;
+      window.location.href = `${process.env.REACT_APP_API_URL || 'http://localhost:5002'}/api/auth/google/calendar`;
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('Failed to initiate Google Calendar connection');

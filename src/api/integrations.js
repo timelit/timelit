@@ -1,24 +1,5 @@
 import { timelit } from './timelitClient';
 
-
-
-
-export const Core = timelit.integrations.Core;
-
-export const InvokeLLM = timelit.integrations.Core.InvokeLLM;
-
-export const SendEmail = timelit.integrations.Core.SendEmail;
-
-export const UploadFile = timelit.integrations.Core.UploadFile;
-
-export const GenerateImage = timelit.integrations.Core.GenerateImage;
-
-export const ExtractDataFromUploadedFile = timelit.integrations.Core.ExtractDataFromUploadedFile;
-
-export const CreateFileSignedUrl = timelit.integrations.Core.CreateFileSignedUrl;
-
-export const UploadPrivateFile = timelit.integrations.Core.UploadPrivateFile;
-
 export const GoogleCalendar = {
   disconnect: async () => {
     const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/integrations/google-calendar/disconnect`, {

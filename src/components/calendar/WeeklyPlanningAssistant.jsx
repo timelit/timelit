@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, Sparkles, Clock, ListTodo, CheckCircle, Target } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { InvokeLLM } from "@/api/integrations";
 import { Event } from "@/api/entities";
 import { Task } from "@/api/entities";
 import { format, startOfWeek, endOfWeek, addDays } from 'date-fns';
@@ -82,82 +81,13 @@ export default function WeeklyPlanningAssistant({ onSuggestEvent }) {
       const workHours = preferences?.work_start_time || "09:00";
       const workEnd = preferences?.work_end_time || "17:00";
 
-      const response = await InvokeLLM({
-        prompt: `You are an intelligent weekly planner. Create a comprehensive weekly schedule for ${format(weekStart, 'PPP')} to ${format(weekEnd, 'PPP')}.
-
-EXISTING TASKS TO SCHEDULE:
-${tasksContext.length > 0 ? tasksContext.map(task => `- ${task.title} (Priority: ${task.priority}, Due: ${task.due_date || 'No due date'}, Status: ${task.status})`).join('\n') : 'No incomplete tasks'}
-
-EXISTING EVENTS THIS WEEK:
-${eventsContext.length > 0 ? eventsContext.map(event => `- ${event.title}: ${format(new Date(event.start_time), 'PPP p')} - ${format(new Date(event.end_time), 'p')}`).join('\n') : 'No scheduled events this week'}
-
-USER PREFERENCES:
-- Work hours: ${workHours} - ${workEnd}
-- Preferred event duration: ${preferences?.default_event_duration || 60} minutes
-
-INSTRUCTIONS:
-1. For EXISTING TASKS: Schedule time blocks for each incomplete task, considering their priority and due dates
-2. Suggest optimal times based on task priority and user's work schedule
-3. For high-priority or overdue tasks, suggest earlier time slots
-4. Avoid conflicts with existing events
-5. Suggest additional activities for work-life balance (breaks, exercise, etc.)
-6. Create a balanced weekly schedule
-
-Return two types of updates:
-- "updates": Modifications to existing tasks (new due dates or scheduling times)
-- "new_items": Completely new events/tasks to add to the schedule
-
-Focus on productivity, time management, and creating a realistic weekly plan.`,
-
-        response_json_schema: {
-          type: "object",
-          properties: {
-            weekly_summary: {
-              type: "string",
-              description: "A brief summary of the weekly plan strategy"
-            },
-            updates: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string", description: "ID of existing task/event" },
-                  type: { type: "string", enum: ["task", "event"] },
-                  suggested_changes: {
-                    type: "object",
-                    properties: {
-                      start_time: { type: "string", format: "date-time" },
-                      end_time: { type: "string", format: "date-time" },
-                      due_date: { type: "string", format: "date" },
-                      scheduling_note: { type: "string" }
-                    }
-                  }
-                },
-                required: ["id", "type", "suggested_changes"]
-              }
-            },
-            new_items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  type: { type: "string", enum: ["task", "event"] },
-                  title: { type: "string" },
-                  description: { type: "string" },
-                  start_time: { type: "string", format: "date-time" },
-                  end_time: { type: "string", format: "date-time" },
-                  category: { type: "string" },
-                  priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
-                  scheduling_note: { type: "string" }
-                },
-                required: ["type", "title", "start_time", "end_time"]
-              }
-            }
-          },
-          required: ["weekly_summary", "updates", "new_items"]
-        },
-        add_context_from_internet: false
-      });
+      // Mock response since LLM API is not implemented
+      const mockResponse = {
+        weekly_summary: "Weekly planning feature is currently disabled. LLM API integration needed for full functionality.",
+        updates: [],
+        new_items: []
+      };
+      const response = mockResponse;
 
       setSuggestions(response);
     } catch (error) {

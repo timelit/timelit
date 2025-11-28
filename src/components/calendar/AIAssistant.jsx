@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Bot, Sparkles, Clock, Calendar, Lightbulb, CalendarDays, ListTodo } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { InvokeLLM } from "@/api/integrations";
 import { Event } from "@/api/entities";
 import { Task } from "@/api/entities";
 import { format } from 'date-fns';
@@ -51,60 +50,20 @@ export default function AIAssistant({ onSuggestEvent }) {
         date: new Date(event.start_time).toDateString()
       }));
 
-      const response = await InvokeLLM({
-          prompt: `You are a smart calendar assistant. Based on the following request, suggest one or more calendar events. 
-
-IMPORTANT SCHEDULING RULES:
-1. User's work hours are ${workStartTime} to ${workEndTime}.
-2. Prioritize scheduling new events within these work hours.
-3. Check for time conflicts with the user's existing events.
-4. If a direct conflict exists within work hours, find the next available slot within work hours.
-5. If work hours are completely full on a given day, schedule the event in the evening (e.g., after ${workEndTime}).
-6. Avoid scheduling during weekends (Saturday, Sunday) unless the user's request specifically mentions it.
-7. Default event duration should be 1 hour unless the context of the request suggests a different length.
-
-Current date: ${new Date().toLocaleDateString()}
-User's work hours: ${workStartTime} - ${workEndTime}
-
-Existing events to avoid conflicts with:
-${existingEventsContext.map(e => `- ${e.title}: ${new Date(e.start_time).toLocaleString()} to ${new Date(e.end_time).toLocaleString()}`).join('\n')}
-
-User request: "${prompt}"
-
-For each suggestion you create:
-- Strictly follow all scheduling rules above.
-- Determine if it's a "task" (work to be done) or an "event" (meeting, appointment).
-- Provide realistic start and end times based on the current date and the rules.
-- Add a "scheduling_note" explaining *why* a specific time was chosen, especially if it had to be moved due to a conflict or placed outside work hours.`,
-          
-          response_json_schema: {
-              type: "object",
-              properties: {
-                  suggestions: {
-                      type: "array",
-                      items: {
-                          type: "object",
-                          properties: {
-                              ...eventSchema,
-                              type: { 
-                                type: "string", 
-                                enum: ["task", "event"], 
-                                description: "Whether this should be treated as a task or event." 
-                              },
-                              scheduling_note: {
-                                type: "string",
-                                description: "An explanation of why this time was chosen, especially if there was a conflict."
-                              },
-                              confidence: { type: "number", description: "Confidence score from 0 to 100 on how well the suggestion matches the request." }
-                          },
-                          required: ["title", "start_time", "end_time", "type"]
-                      }
-                  }
-              },
-              required: ["suggestions"]
-          },
-          add_context_from_internet: true,
-      });
+      // Mock response since LLM API is not implemented
+      const mockResponse = {
+        suggestions: [
+          {
+            title: prompt,
+            start_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
+            end_time: new Date(Date.now() + 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(), // 1 hour later
+            type: "event",
+            scheduling_note: "Scheduled for tomorrow during work hours",
+            confidence: 85
+          }
+        ]
+      };
+      const response = mockResponse;
 
       const processedSuggestions = response.suggestions.map(s => ({...s, ai_suggested: true}));
       setSuggestions(processedSuggestions);

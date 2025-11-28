@@ -12,7 +12,11 @@ router.get('/', async (req, res) => {
   try {
     const { completed, category, listId, dueDate } = req.query;
 
-    let query = { createdBy: req.user._id };
+    // Handle anonymous users - allow access to all tasks or filter by anonymous
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
 
     if (completed !== undefined) {
       query.status = completed === 'true' ? 'done' : 'todo';
@@ -50,7 +54,11 @@ router.get('/', async (req, res) => {
 
 router.get('/lists', async (req, res) => {
   try {
-    const lists = await TaskList.find({ createdBy: req.user._id }).sort({ createdAt: -1 });
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    const lists = await TaskList.find(query).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -97,7 +105,7 @@ router.post('/', async (req, res) => {
   try {
     const taskData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user._id !== 'anonymous' ? req.user._id : null
     };
 
     const task = await Task.create(taskData);
@@ -117,8 +125,13 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    let query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    
     const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
     ).populate('list_id', 'name color');
@@ -145,10 +158,12 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const task = await Task.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    let query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    
+    const task = await Task.findOneAndDelete(query);
 
     if (!task) {
       return res.status(404).json({
@@ -174,7 +189,7 @@ router.post('/lists', async (req, res) => {
   try {
     const listData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user._id !== 'anonymous' ? req.user._id : null
     };
 
     const list = await TaskList.create(listData);

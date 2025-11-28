@@ -391,62 +391,10 @@ const fastCategorize = (item, itemType, userPreferences) => {
   }
 };
 
-// 🤖 LLM VERIFICATION (Background refinement)
+// 🤖 LLM VERIFICATION (Background refinement) - DISABLED: API not implemented
 const llmVerifyCategory = async (item, itemType, keywordResult, userPreferences) => {
-  try {
-    const availableCategories = itemType === 'event' 
-      ? (userPreferences?.event_categories || []).map(c => c.name)
-      : taskCategories;
-
-    const prompt = `You are a smart categorization assistant. A ${itemType} has been automatically categorized as "${keywordResult.category}" based on keywords.
-
-Title: "${item.title}"
-Description: "${item.description || 'N/A'}"
-Location: "${item.location || 'N/A'}"
-
-Available categories: ${availableCategories.join(', ')}
-
-Current category: ${keywordResult.category}
-
-Is this categorization correct? If not, which category fits better? Consider the context and nuance.
-
-Return ONLY a JSON object with: {"category": "correct_category", "confidence": "high/medium/low", "reason": "brief explanation"}`;
-
-    const response = await Promise.race([
-      timelit.integrations.Core.InvokeLLM({
-        prompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            category: { type: "string" },
-            confidence: { type: "string", enum: ["high", "medium", "low"] },
-            reason: { type: "string" }
-          },
-          required: ["category", "confidence"]
-        }
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('LLM timeout')), 5000))
-    ]);
-
-    if (response?.category && availableCategories.includes(response.category)) {
-      const color = itemType === 'event'
-        ? userPreferences?.event_categories?.find(c => c.name === response.category)?.color || '#8b5cf6'
-        : taskCategoryColors[response.category] || '#8b5cf6';
-      
-      return {
-        category: response.category,
-        color,
-        confidence: 'llm-verified',
-        changed: response.category !== keywordResult.category
-      };
-    }
-    // If LLM response is invalid or category not found among available ones,
-    // return original keyword result but mark as LLM tried (failed to provide valid one).
-    return { ...keywordResult, confidence: 'llm-verified-failed', changed: false }; 
-  } catch (error) {
-    console.warn('LLM verification failed, keeping keyword result:', error.message);
-    return { ...keywordResult, confidence: 'keyword-only', changed: false };
-  }
+  // Return keyword result directly since LLM API is not available
+  return { ...keywordResult, confidence: 'keyword-only', changed: false };
 };
 
 const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulkAddEventsFn, userId, userPreferences) => {
