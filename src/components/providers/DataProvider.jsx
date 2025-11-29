@@ -466,6 +466,7 @@ const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulk
 export function DataProvider({ children }) {
   const [events, setEvents] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [preferences, setPreferences] = useState({});
   const [isDataLoading, setIsDataLoading] = useState(false);
 
   const [error, setError] = useState(null);
@@ -496,7 +497,7 @@ export function DataProvider({ children }) {
       setIsDataLoading(true);
       setError(null);
 
-      const [eventsResult, tasksResult] = await Promise.allSettled([
+      const [eventsResult, tasksResult, preferencesResult] = await Promise.allSettled([
         cache.get(
           'events',
           () => Event.filter({}, "-start_time"),
@@ -507,11 +508,17 @@ export function DataProvider({ children }) {
           () => Task.filter({}, "-created_date"),
           180000 // 3 min cache
         ),
+        cache.get(
+          'preferences',
+          () => timelit.entities.User.preferences(),
+          180000 // 3 min cache
+        ),
       ]);
 
       const localEvents = eventsResult.status === 'fulfilled' ? eventsResult.value || [] : [];
       const rawTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
       const allTasks = rawTasks.map(normalizeTask);
+      const userPreferences = preferencesResult.status === 'fulfilled' ? preferencesResult.value || {} : {};
 
       const taskIndex = new Map(allTasks.map(t => [t.id, t]));
 
@@ -551,11 +558,31 @@ export function DataProvider({ children }) {
           description: task.description,
         }));
 
-      const allEvents = [...processedEvents, ...taskScheduledEvents];
+      // Add task due date events to the events list
+      const taskDueDateEvents = allTasks
+        .filter(task => task.due_date && task.status !== 'done' && task.status !== 'wont_do' && !task.scheduled_start_time)
+        .map(task => ({
+          id: `task-due-${task.id}`,
+          title: `📅 ${task.title}`,
+          start_time: task.due_date,
+          end_time: task.due_date,
+          category: task.category,
+          color: task.color,
+          priority: task.priority,
+          task_id: task.id,
+          task_status: task.status,
+          task_priority: task.priority,
+          isTaskEvent: true,
+          isAllDay: true,
+          description: task.description,
+        }));
+
+      const allEvents = [...processedEvents, ...taskScheduledEvents, ...taskDueDateEvents];
 
       // ✅ IMPORTANT: Clear and set fresh state
       setEvents(allEvents);
       setTasks(allTasks);
+      setPreferences(userPreferences);
 
       dataLoadedRef.current = true;
 
@@ -627,7 +654,7 @@ export function DataProvider({ children }) {
       return event;
     }));
 
-    // Update task-scheduled events when task changes
+    // Update task-scheduled events and task-due events when task changes
     setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== taskId));
     const updatedTask = { ...originalTask, ...updates };
     if (updatedTask.scheduled_start_time && updatedTask.status !== 'done' && updatedTask.status !== 'wont_do') {
@@ -646,6 +673,23 @@ export function DataProvider({ children }) {
         description: updatedTask.description,
       };
       setEvents(prev => [...prev, taskEvent]);
+    } else if (updatedTask.due_date && updatedTask.status !== 'done' && updatedTask.status !== 'wont_do' && !updatedTask.scheduled_start_time) {
+      const taskDueDateEvent = {
+        id: `task-due-${taskId}`,
+        title: `📅 ${updatedTask.title}`,
+        start_time: updatedTask.due_date,
+        end_time: updatedTask.due_date,
+        category: updatedTask.category,
+        color: updatedTask.color,
+        priority: updatedTask.priority,
+        task_id: taskId,
+        task_status: updatedTask.status,
+        task_priority: updatedTask.priority,
+        isTaskEvent: true,
+        isAllDay: true,
+        description: updatedTask.description,
+      };
+      setEvents(prev => [...prev, taskDueDateEvent]);
     }
 
     try {
@@ -795,7 +839,7 @@ export function DataProvider({ children }) {
       toast.error('Failed to add event');
       throw error;
     }
-  }, [updateUndoRedoStates]);
+  }, [updateUndoRedoStates, preferences]);
 
   const addTask = useCallback(async (taskData) => {
     if (addTaskInFlightRef.current) {
@@ -843,6 +887,26 @@ export function DataProvider({ children }) {
         return [normalized, ...filtered];
       });
 
+      // Add task due date event to events if task has due date and isn't scheduled
+      if (normalized.due_date && normalized.status !== 'done' && normalized.status !== 'wont_do' && !normalized.scheduled_start_time) {
+        const taskDueDateEvent = {
+          id: `task-due-${normalized.id}`,
+          title: `📅 ${normalized.title}`,
+          start_time: normalized.due_date,
+          end_time: normalized.due_date,
+          category: normalized.category,
+          color: normalized.color,
+          priority: normalized.priority,
+          task_id: normalized.id,
+          task_status: normalized.status,
+          task_priority: normalized.priority,
+          isTaskEvent: true,
+          isAllDay: true,
+          description: normalized.description,
+        };
+        setEvents(prev => [...prev, taskDueDateEvent]);
+      }
+
       cache.invalidate('tasks');
 
       undoManager.addAction({
@@ -887,7 +951,7 @@ export function DataProvider({ children }) {
       toast.error('Failed to add task');
       throw error;
     }
-  }, [updateUndoRedoStates]);
+  }, [updateUndoRedoStates, preferences]);
 
   const triggerCategorization = useCallback(async () => {
     if (categorizationProgress.isActive) {
@@ -937,12 +1001,15 @@ export function DataProvider({ children }) {
     }
 
     try {
-      Event.delete(eventId).then(() => {
-        cache.invalidate('events');
-      }).catch(err => {
-        console.error("Background Event deletion failed:", err);
-        setEvents(prev => eventToDelete ? [eventToDelete, ...prev] : prev);
-      });
+      // Skip server deletion for virtual task-due events
+      if (!eventId.startsWith('task-due-')) {
+        Event.delete(eventId).then(() => {
+          cache.invalidate('events');
+        }).catch(err => {
+          console.error("Background Event deletion failed:", err);
+          setEvents(prev => eventToDelete ? [eventToDelete, ...prev] : prev);
+        });
+      }
 
       if (deletedTask) {
         Task.delete(deletedTask.id).then(() => {
@@ -1376,10 +1443,22 @@ export function DataProvider({ children }) {
     }
   }, [isDataLoading, events, tasks]);
 
+  const updatePreferences = useCallback(async (newPreferences) => {
+    try {
+      await timelit.entities.User.updatePreferences(newPreferences);
+      setPreferences(prev => ({ ...prev, ...newPreferences }));
+      cache.invalidate('preferences');
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      throw error;
+    }
+  }, []);
+
   const value = useMemo(() => ({
     events,
     setEvents,
     tasks,
+    preferences,
     isLoading,
     isDataLoading,
     error,
@@ -1395,15 +1474,17 @@ export function DataProvider({ children }) {
     regenerateSchedule,
     categorizationProgress,
     triggerCategorization,
+    updatePreferences,
     undo,
     redo,
     canUndo: canUndoState,
     canRedo: canRedoState,
   }), [
-    events, tasks, isLoading, isDataLoading, error,
+    events, tasks, preferences, isLoading, isDataLoading, error,
     refreshData,
     addEvent, bulkAddEvents, updateEvent, deleteEvent, deleteEventSeries,
     addTask, updateTask, deleteTask, regenerateSchedule, categorizationProgress, triggerCategorization,
+    updatePreferences,
     undo, redo, canUndoState, canRedoState,
   ]);
 

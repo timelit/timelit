@@ -8,7 +8,6 @@ import { DataProvider } from "../components/providers/DataProvider";
 import { CalendarDateProvider, useCalendarDate } from "../components/providers/CalendarDateProvider";
 import UserNav from "../components/layout/UserNav";
 import MiniCalendar from "../components/calendar/MiniCalendar";
-import CalendarInsights from "../components/calendar/CalendarInsights";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
@@ -93,7 +92,7 @@ function LayoutContent({ children, currentPageName }) {
                 display: none;
               }
             `}</style>
-            <CalendarInsights currentDate={currentDate} calendarView="week" />
+            {/* Calendar insights removed - was causing errors */}
           </div>
 
           <div className="mt-auto p-4 flex-shrink-0">

@@ -9,6 +9,28 @@ router.use(protect);
 
 router.get('/preferences', async (req, res) => {
   try {
+    // Handle anonymous users - return default preferences
+    if (!req.user._id || req.user._id === 'anonymous') {
+      return res.status(200).json({
+        success: true,
+        data: {
+          default_task_status: 'todo',
+          default_task_priority: 'medium',
+          auto_schedule_tasks_into_calendar: false,
+          task_notes: '',
+          event_categories: [
+            {name: "work", color: "#3b82f6"},
+            {name: "personal", color: "#8b5cf6"},
+            {name: "meeting", color: "#ec4899"},
+            {name: "appointment", color: "#10b981"},
+            {name: "reminder", color: "#f59e0b"},
+            {name: "travel", color: "#6366f1"},
+            {name: "social", color: "#ef4444"}
+          ]
+        }
+      });
+    }
+
     const user = await User.findById(req.user._id);
     res.status(200).json({
       success: true,

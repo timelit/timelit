@@ -46,7 +46,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import CalendarInsights from "../components/calendar/CalendarInsights";
 import MiniCalendar from "../components/calendar/MiniCalendar";
 
 const HOUR_HEIGHT = 48;

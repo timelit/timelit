@@ -11,7 +11,11 @@ router.get('/', async (req, res) => {
   try {
     const { start, end, category } = req.query;
 
-    let query = { createdBy: req.user._id };
+    // Handle anonymous users - allow access to all events or filter by anonymous
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
 
     if (start && end) {
       query.startTime = {
@@ -42,10 +46,12 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const event = await Event.findOne({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOne(query);
 
     if (!event) {
       return res.status(404).json({
@@ -71,7 +77,7 @@ router.post('/', async (req, res) => {
   try {
     const eventData = {
       ...req.body,
-      createdBy: req.user._id
+      ...(req.user._id !== 'anonymous' && { createdBy: req.user._id })
     };
 
     const event = await Event.create(eventData);
@@ -91,8 +97,13 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
     const event = await Event.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -119,10 +130,12 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const event = await Event.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOneAndDelete(query);
 
     if (!event) {
       return res.status(404).json({
@@ -157,7 +170,7 @@ router.post('/bulk', async (req, res) => {
 
     const eventsWithUser = events.map(event => ({
       ...event,
-      createdBy: req.user._id
+      ...(req.user._id !== 'anonymous' && { createdBy: req.user._id })
     }));
 
     const createdEvents = await Event.insertMany(eventsWithUser);

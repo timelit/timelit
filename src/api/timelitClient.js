@@ -140,6 +140,19 @@ class ApiClient {
 
   // Entities
   entities = {
+    User: {
+      preferences: async () => {
+        return await this.request('/users/preferences');
+      },
+
+      updatePreferences: async (preferences) => {
+        return await this.request('/users/preferences', {
+          method: 'PUT',
+          body: JSON.stringify(preferences)
+        });
+      }
+    },
+
     Event: {
       get: async (id) => {
         const response = await this.request(`/events/${id}`);

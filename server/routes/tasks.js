@@ -76,10 +76,12 @@ router.get('/lists', async (req, res) => {
 
 router.get('/:id([0-9a-fA-F]{24})', async (req, res) => {
   try {
-    const task = await Task.findOne({
-      _id: req.params.id,
-      createdBy: req.user._id
-    }).populate('list_id', 'name color');
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const task = await Task.findOne(query).populate('list_id', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -209,8 +211,13 @@ router.post('/lists', async (req, res) => {
 
 router.put('/lists/:id', async (req, res) => {
   try {
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
     const list = await TaskList.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -237,10 +244,12 @@ router.put('/lists/:id', async (req, res) => {
 
 router.delete('/lists/:id', async (req, res) => {
   try {
-    const list = await TaskList.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const list = await TaskList.findOneAndDelete(query);
 
     if (!list) {
       return res.status(404).json({
