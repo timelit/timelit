@@ -989,68 +989,94 @@ export default function CalendarPage() {
                                     </div>
                                   )}
 
-                                  {itemsForDay
-                                    .filter((item) => {
-                                      const isCurrentlyResizing = resizingEvent && item.id === resizingEvent.event.id;
-                                      if (isCurrentlyResizing) return false;
+                                  {(() => {
+                                    // Group events by their start time to handle overlaps
+                                    const eventsInThisHour = itemsForDay
+                                      .filter((item) => {
+                                        const isCurrentlyResizing = resizingEvent && item.id === resizingEvent.event.id;
+                                        if (isCurrentlyResizing) return false;
 
-                                      const itemStart = new Date(item.start_time);
-                                      return itemStart.getHours() === hour && isSameDay(itemStart, day);
-                                    })
-                                    .map((item) => {
-                                      const startTime = new Date(item.start_time);
-                                      const endTime = new Date(item.end_time);
-                                      const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-                                      const minutesFromHour = startTime.getMinutes();
-                                      const topOffset = (minutesFromHour / 60) * HOUR_HEIGHT;
-                                      const isCurrentlyDragging = draggedEvent && item.id === draggedEvent.id;
+                                        const itemStart = new Date(item.start_time);
+                                        return itemStart.getHours() === hour && isSameDay(itemStart, day);
+                                      });
 
-                                      return (
-                                        <Tooltip key={item.id}>
-                                          <TooltipTrigger asChild>
-                                            <div
-                                              className="absolute inset-x-0 z-10"
-                                              style={{ top: `${topOffset}px` }}
-                                            >
-                                              <EventCard
-                                                event={item}
-                                                duration={Math.max(duration, 0.15)}
-                                                hourHeight={HOUR_HEIGHT}
-                                                isSelected={selectedEventIds.has(item.id)}
-                                                onSelect={handleEventSelect}
-                                                onDoubleClick={handleEventDoubleClick}
-                                                onDragStart={handleDragStart}
-                                                onDragEnd={handleDragEnd}
-                                                onResizeStart={handleResizeStart}
-                                                isDragging={isCurrentlyDragging}
-                                                preferences={preferences}
-                                              />
-                                            </div>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="right" className="bg-neutral-800 border-neutral-700">
-                                            <div className="text-xs">
-                                              <div className="font-semibold">{item.title}</div>
-                                              <div className="text-neutral-400 mt-1">
-                                                {format(startTime, 'h:mm a')} - {format(endTime, 'h:mm a')}
+                                    // Group by exact start time (minute precision)
+                                    const eventsByStartTime = new Map();
+                                    eventsInThisHour.forEach(event => {
+                                      const startTime = new Date(event.start_time);
+                                      const key = `${startTime.getHours()}:${startTime.getMinutes()}`;
+                                      if (!eventsByStartTime.has(key)) {
+                                        eventsByStartTime.set(key, []);
+                                      }
+                                      eventsByStartTime.get(key).push(event);
+                                    });
+
+                                    // Render events with stacking for overlaps
+                                    const renderedEvents = [];
+                                    eventsByStartTime.forEach((eventsAtSameTime, timeKey) => {
+                                      eventsAtSameTime.forEach((item, index) => {
+                                        const startTime = new Date(item.start_time);
+                                        const endTime = new Date(item.end_time);
+                                        const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+                                        const minutesFromHour = startTime.getMinutes();
+                                        const baseTopOffset = (minutesFromHour / 60) * HOUR_HEIGHT;
+
+                                        // Add vertical offset for overlapping events (stack them)
+                                        const overlapOffset = index * 2; // 2px vertical spacing between overlapping events
+                                        const topOffset = baseTopOffset + overlapOffset;
+
+                                        const isCurrentlyDragging = draggedEvent && item.id === draggedEvent.id;
+
+                                        renderedEvents.push(
+                                          <Tooltip key={item.id}>
+                                            <TooltipTrigger asChild>
+                                              <div
+                                                className="absolute inset-x-0 z-10"
+                                                style={{ top: `${topOffset}px` }}
+                                              >
+                                                <EventCard
+                                                  event={item}
+                                                  duration={Math.max(duration, 0.15)}
+                                                  hourHeight={HOUR_HEIGHT}
+                                                  isSelected={selectedEventIds.has(item.id)}
+                                                  onSelect={handleEventSelect}
+                                                  onDoubleClick={handleEventDoubleClick}
+                                                  onDragStart={handleDragStart}
+                                                  onDragEnd={handleDragEnd}
+                                                  onResizeStart={handleResizeStart}
+                                                  isDragging={isCurrentlyDragging}
+                                                  preferences={preferences}
+                                                />
                                               </div>
-                                              <div className="text-neutral-500 mt-0.5">
-                                                Duration: {Math.round(duration * 60)} min
-                                              </div>
-                                              {item.description && (
-                                                <div className="text-neutral-400 mt-1 italic">
-                                                  {item.description}
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right" className="bg-neutral-800 border-neutral-700">
+                                              <div className="text-xs">
+                                                <div className="font-semibold">{item.title}</div>
+                                                <div className="text-neutral-400 mt-1">
+                                                  {format(startTime, 'h:mm a')} - {format(endTime, 'h:mm a')}
                                                 </div>
-                                              )}
-                                              {item.location && (
                                                 <div className="text-neutral-500 mt-0.5">
-                                                  📍 {item.location}
+                                                  Duration: {Math.round(duration * 60)} min
                                                 </div>
-                                              )}
-                                            </div>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      );
-                                    })}
+                                                {item.description && (
+                                                  <div className="text-neutral-400 mt-1 italic">
+                                                    {item.description}
+                                                  </div>
+                                                )}
+                                                {item.location && (
+                                                  <div className="text-neutral-500 mt-0.5">
+                                                    📍 {item.location}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        );
+                                      });
+                                    });
+
+                                    return renderedEvents;
+                                  })()}
                                 </div>
                               );
                             })}

@@ -12,6 +12,11 @@ dotenv.config();
 require('./passport-config');
 
 const taskRoutes = require('./routes/tasks');
+const authRoutes = require('./routes/auth');
+const eventRoutes = require('./routes/events');
+const userRoutes = require('./routes/users');
+const integrationRoutes = require('./routes/integrations');
+const schedulingRoutes = require('./routes/scheduling');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -48,6 +53,11 @@ mongoose.connect(process.env.MONGODB_URI, {
 });
 
 app.use('/api/tasks', taskRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/integrations', integrationRoutes);
+app.use('/api/scheduling', schedulingRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK' });

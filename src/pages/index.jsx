@@ -20,6 +20,8 @@ import GoogleOAuthInstructions from "./GoogleOAuthInstructions";
 
 import Settings from "./Settings";
 
+import Scheduling from "./Scheduling";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -43,7 +45,9 @@ const PAGES = {
     GoogleOAuthInstructions: GoogleOAuthInstructions,
     
     Settings: Settings,
-    
+
+    Scheduling: Scheduling,
+
 }
 
 function _getCurrentPage(url) {
@@ -90,6 +94,8 @@ function PagesContent() {
                 <Route path="/GoogleOAuthInstructions" element={<GoogleOAuthInstructions />} />
 
                 <Route path="/Settings" element={<Settings />} />
+
+                <Route path="/Scheduling" element={<Scheduling />} />
 
             </Routes>
         </Layout>
