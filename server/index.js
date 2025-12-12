@@ -42,6 +42,9 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 app.use(passport.initialize());
 
+console.log('Attempting to connect to MongoDB...');
+console.log('MONGODB_URI:', process.env.MONGODB_URI.replace(/:([^:@]{4})[^:@]*@/, ':****@'));
+
 mongoose.connect(process.env.MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
@@ -49,6 +52,9 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => logger.info('MongoDB connected successfully'))
 .catch(err => {
   logger.error('MongoDB connection failed:', err);
+  logger.error('Error message:', err.message);
+  logger.error('Error code:', err.code);
+  logger.error('Error codeName:', err.codeName);
   process.exit(1);
 });
 
