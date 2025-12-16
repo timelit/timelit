@@ -1,37 +1,50 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
 const User = require('../models/User');
-const MoodEntry = require('../models/MoodEntry');
-const PomodoroSession = require('../models/PomodoroSession');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes require authentication
 router.use(protect);
 
-// @desc    Get user preferences
-// @route   GET /api/users/preferences
-// @access  Private
 router.get('/preferences', async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    // Handle anonymous users - return default preferences
+    if (!req.user._id || req.user._id === 'anonymous') {
+      return res.status(200).json({
+        success: true,
+        data: {
+          default_task_status: 'todo',
+          default_task_priority: 'medium',
+          auto_schedule_tasks_into_calendar: false,
+          task_notes: '',
+          event_categories: [
+            {name: "work", color: "#3b82f6"},
+            {name: "personal", color: "#8b5cf6"},
+            {name: "meeting", color: "#ec4899"},
+            {name: "appointment", color: "#10b981"},
+            {name: "reminder", color: "#f59e0b"},
+            {name: "travel", color: "#6366f1"},
+            {name: "social", color: "#ef4444"}
+          ]
+        }
+      });
+    }
 
+    const user = await User.findById(req.user._id);
     res.status(200).json({
       success: true,
-      data: user.preferences
+      data: user.preferences || {}
     });
   } catch (error) {
+    logger.error('Get preferences error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to get preferences'
     });
   }
 });
 
-// @desc    Update user preferences
-// @route   PUT /api/users/preferences
-// @access  Private
 router.put('/preferences', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
@@ -45,161 +58,13 @@ router.put('/preferences', async (req, res) => {
       data: user.preferences
     });
   } catch (error) {
+    logger.error('Update preferences error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update preferences'
     });
   }
 });
 
-// Mood tracking routes
-
-// @desc    Get mood entries
-// @route   GET /api/users/mood
-// @access  Private
-router.get('/mood', async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-
-    let query = { createdBy: req.user._id };
-
-    if (startDate && endDate) {
-      query.date = {
-        $gte: startDate,
-        $lte: endDate
-      };
-    }
-
-    const entries = await MoodEntry.find(query).sort({ date: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: entries.length,
-      data: entries
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
-
-// @desc    Create or update mood entry
-// @route   POST /api/users/mood
-// @access  Private
-router.post('/mood', async (req, res) => {
-  try {
-    const { date, rating, note, factors } = req.body;
-
-    const existingEntry = await MoodEntry.findOne({
-      createdBy: req.user._id,
-      date
-    });
-
-    let entry;
-    if (existingEntry) {
-      entry = await MoodEntry.findByIdAndUpdate(
-        existingEntry._id,
-        { rating, note, factors },
-        { new: true, runValidators: true }
-      );
-    } else {
-      entry = await MoodEntry.create({
-        date,
-        rating,
-        note,
-        factors,
-        createdBy: req.user._id
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: entry
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
-
-// Pomodoro routes
-
-// @desc    Get pomodoro sessions
-// @route   GET /api/users/pomodoro
-// @access  Private
-router.get('/pomodoro', async (req, res) => {
-  try {
-    const { date } = req.query;
-
-    let query = { createdBy: req.user._id };
-
-    if (date) {
-      query.date = date;
-    }
-
-    const sessions = await PomodoroSession.find(query).sort({ date: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: sessions.length,
-      data: sessions
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
-
-// @desc    Update pomodoro session
-// @route   PUT /api/users/pomodoro/:date
-// @access  Private
-router.put('/pomodoro/:date', async (req, res) => {
-  try {
-    const { cyclesCompleted, totalFocusTime, totalBreakTime, sessions } = req.body;
-
-    let session = await PomodoroSession.findOne({
-      createdBy: req.user._id,
-      date: req.params.date
-    });
-
-    if (session) {
-      session.cyclesCompleted = cyclesCompleted;
-      session.totalFocusTime = totalFocusTime;
-      session.totalBreakTime = totalBreakTime;
-      session.sessions = sessions;
-      await session.save();
-    } else {
-      session = await PomodoroSession.create({
-        date: req.params.date,
-        cyclesCompleted,
-        totalFocusTime,
-        totalBreakTime,
-        sessions,
-        createdBy: req.user._id
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: session
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
 
 module.exports = router;

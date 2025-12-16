@@ -1,49 +1,59 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
-// Protect routes - require authentication
 const protect = async (req, res, next) => {
   try {
     let token;
 
-    // Check for token in header
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized to access this route'
-      });
+      // Allow anonymous access - create a default user object
+      req.user = {
+        _id: 'anonymous',
+        email: 'anonymous@local',
+        name: 'Anonymous User'
+      };
+      return next();
     }
 
     try {
-      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Get user from token
       req.user = await User.findById(decoded.id).select('-password');
 
       if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: 'User not found'
-        });
+        // Fallback to anonymous if user not found
+        req.user = {
+          _id: 'anonymous',
+          email: 'anonymous@local',
+          name: 'Anonymous User'
+        };
+        return next();
       }
 
       next();
     } catch (error) {
-      return res.status(401).json({
-        success: false,
-        message: 'Not authorized to access this route'
-      });
+      logger.warn('Token verification failed, allowing anonymous access:', error.message);
+      // Allow anonymous access even with invalid token
+      req.user = {
+        _id: 'anonymous',
+        email: 'anonymous@local',
+        name: 'Anonymous User'
+      };
+      next();
     }
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
+    logger.error('Auth middleware error:', error);
+    // Allow anonymous access on error
+    req.user = {
+      _id: 'anonymous',
+      email: 'anonymous@local',
+      name: 'Anonymous User'
+    };
+    next();
   }
 };
 

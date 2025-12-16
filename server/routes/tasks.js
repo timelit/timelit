@@ -2,44 +2,41 @@ const express = require('express');
 const { protect } = require('../middleware/auth');
 const Task = require('../models/Task');
 const TaskList = require('../models/TaskList');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes require authentication
 router.use(protect);
 
-// @desc    Get all tasks
-// @route   GET /api/tasks
-// @access  Private
 router.get('/', async (req, res) => {
   try {
     const { completed, category, listId, dueDate } = req.query;
 
-    let query = { createdBy: req.user._id };
-
-    // Filter by completion status
-    if (completed !== undefined) {
-      query.completed = completed === 'true';
+    // Handle anonymous users - allow access to all tasks or filter by anonymous
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
     }
 
-    // Filter by category
+    if (completed !== undefined) {
+      query.status = completed === 'true' ? 'done' : 'todo';
+    }
+
     if (category) {
       query.category = category;
     }
 
-    // Filter by list
     if (listId) {
       query.listId = listId;
     }
 
-    // Filter by due date
     if (dueDate) {
-      query.dueDate = { $lte: new Date(dueDate) };
+      query.due_date = { $lte: new Date(dueDate) };
     }
 
     const tasks = await Task.find(query)
-      .populate('listId', 'name color')
-      .sort({ createdAt: -1 });
+      .populate('list_id', 'name color')
+      .sort({ created_date: -1 });
 
     res.status(200).json({
       success: true,
@@ -47,23 +44,44 @@ router.get('/', async (req, res) => {
       data: tasks
     });
   } catch (error) {
+    logger.error('Get tasks error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch tasks'
     });
   }
 });
 
-// @desc    Get single task
-// @route   GET /api/tasks/:id
-// @access  Private
-router.get('/:id', async (req, res) => {
+router.get('/lists', async (req, res) => {
   try {
-    const task = await Task.findOne({
-      _id: req.params.id,
-      createdBy: req.user._id
-    }).populate('listId', 'name color');
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    const lists = await TaskList.find(query).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: lists.length,
+      data: lists
+    });
+  } catch (error) {
+    logger.error('Get task lists error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch task lists'
+    });
+  }
+});
+
+router.get('/:id([0-9a-fA-F]{24})', async (req, res) => {
+  try {
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const task = await Task.findOne(query).populate('list_id', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -77,22 +95,19 @@ router.get('/:id', async (req, res) => {
       data: task
     });
   } catch (error) {
+    logger.error('Get task error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch task'
     });
   }
 });
 
-// @desc    Create new task
-// @route   POST /api/tasks
-// @access  Private
 router.post('/', async (req, res) => {
   try {
     const taskData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user._id !== 'anonymous' ? req.user._id : null
     };
 
     const task = await Task.create(taskData);
@@ -102,24 +117,26 @@ router.post('/', async (req, res) => {
       data: task
     });
   } catch (error) {
+    logger.error('Create task error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to create task'
     });
   }
 });
 
-// @desc    Update task
-// @route   PUT /api/tasks/:id
-// @access  Private
 router.put('/:id', async (req, res) => {
   try {
+    let query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    
     const task = await Task.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
-    ).populate('listId', 'name color');
+    ).populate('list_id', 'name color');
 
     if (!task) {
       return res.status(404).json({
@@ -133,23 +150,22 @@ router.put('/:id', async (req, res) => {
       data: task
     });
   } catch (error) {
+    logger.error('Update task error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update task'
     });
   }
 });
 
-// @desc    Delete task
-// @route   DELETE /api/tasks/:id
-// @access  Private
 router.delete('/:id', async (req, res) => {
   try {
-    const task = await Task.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    let query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+    
+    const task = await Task.findOneAndDelete(query);
 
     if (!task) {
       return res.status(404).json({
@@ -160,49 +176,22 @@ router.delete('/:id', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {}
+      message: 'Task deleted successfully'
     });
   } catch (error) {
+    logger.error('Delete task error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to delete task'
     });
   }
 });
 
-// Task Lists routes
-
-// @desc    Get all task lists
-// @route   GET /api/tasks/lists
-// @access  Private
-router.get('/lists', async (req, res) => {
-  try {
-    const lists = await TaskList.find({ createdBy: req.user._id })
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      count: lists.length,
-      data: lists
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message
-    });
-  }
-});
-
-// @desc    Create new task list
-// @route   POST /api/tasks/lists
-// @access  Private
 router.post('/lists', async (req, res) => {
   try {
     const listData = {
       ...req.body,
-      createdBy: req.user._id
+      createdBy: req.user._id !== 'anonymous' ? req.user._id : null
     };
 
     const list = await TaskList.create(listData);
@@ -212,21 +201,23 @@ router.post('/lists', async (req, res) => {
       data: list
     });
   } catch (error) {
+    logger.error('Create task list error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to create task list'
     });
   }
 });
 
-// @desc    Update task list
-// @route   PUT /api/tasks/lists/:id
-// @access  Private
 router.put('/lists/:id', async (req, res) => {
   try {
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
     const list = await TaskList.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -243,23 +234,22 @@ router.put('/lists/:id', async (req, res) => {
       data: list
     });
   } catch (error) {
+    logger.error('Update task list error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update task list'
     });
   }
 });
 
-// @desc    Delete task list
-// @route   DELETE /api/tasks/lists/:id
-// @access  Private
 router.delete('/lists/:id', async (req, res) => {
   try {
-    const list = await TaskList.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const list = await TaskList.findOneAndDelete(query);
 
     if (!list) {
       return res.status(404).json({
@@ -268,21 +258,20 @@ router.delete('/lists/:id', async (req, res) => {
       });
     }
 
-    // Remove listId from all tasks in this list
     await Task.updateMany(
-      { listId: req.params.id },
-      { $unset: { listId: 1 } }
+      { list_id: req.params.id },
+      { $unset: { list_id: 1 } }
     );
 
     res.status(200).json({
       success: true,
-      data: {}
+      message: 'Task list deleted successfully'
     });
   } catch (error) {
+    logger.error('Delete task list error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to delete task list'
     });
   }
 });

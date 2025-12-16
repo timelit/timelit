@@ -20,6 +20,8 @@ import GoogleOAuthInstructions from "./GoogleOAuthInstructions";
 
 import Settings from "./Settings";
 
+import Scheduling from "./Scheduling";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -43,7 +45,9 @@ const PAGES = {
     GoogleOAuthInstructions: GoogleOAuthInstructions,
     
     Settings: Settings,
-    
+
+    Scheduling: Scheduling,
+
 }
 
 function _getCurrentPage(url) {
@@ -63,34 +67,36 @@ function _getCurrentPage(url) {
 function PagesContent() {
     const location = useLocation();
     const currentPage = _getCurrentPage(location.pathname);
-    
+
     return (
         <Layout currentPageName={currentPage}>
-            <Routes>            
-                
+            <Routes>
+
                     <Route path="/" element={<Calendar />} />
-                
-                
+
+
                 <Route path="/Calendar" element={<Calendar />} />
-                
+
                 <Route path="/AIAssistant" element={<AIAssistant />} />
-                
+
                 <Route path="/Tasks" element={<Tasks />} />
-                
+
                 <Route path="/Preferences" element={<Preferences />} />
-                
+
                 <Route path="/Statistics" element={<Statistics />} />
-                
+
                 <Route path="/OAuthGenerator" element={<OAuthGenerator />} />
-                
+
                 <Route path="/TermsOfService" element={<TermsOfService />} />
-                
+
                 <Route path="/PrivacyPolicy" element={<PrivacyPolicy />} />
-                
+
                 <Route path="/GoogleOAuthInstructions" element={<GoogleOAuthInstructions />} />
-                
+
                 <Route path="/Settings" element={<Settings />} />
-                
+
+                <Route path="/Scheduling" element={<Scheduling />} />
+
             </Routes>
         </Layout>
     );

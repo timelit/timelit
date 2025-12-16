@@ -6,7 +6,28 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: true
+    host: '0.0.0.0',
+    port: process.env.PORT || 5173,
+    allowedHosts: [
+      'timelit.onrender.com',
+      'localhost',
+      '.onrender.com' // This allows all subdomains of onrender.com
+    ],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5002',
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: { // testing
+    host: '0.0.0.0',
+    port: process.env.PORT || 5173,
+    allowedHosts: [
+      'timelit.onrender.com',
+      'localhost',
+      '.onrender.com'
+    ]
   },
   resolve: {
     alias: {
@@ -21,4 +42,4 @@ export default defineConfig({
       },
     },
   },
-}) 
+})

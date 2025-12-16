@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useData } from "../components/providers/DataProvider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -7,28 +7,70 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Bell, Calendar, Clock, Palette, Zap, Shield, Trash2, BarChart2, 
+import {
+  Bell, Calendar, Clock, Palette, Zap, Shield, Trash2, BarChart2,
   Sparkles, Target, TrendingUp, ListChecks, Timer, Heart, Gauge,
-  Settings as SettingsIcon, Layout, Monitor
+  Settings as SettingsIcon, Layout, Monitor, Save
 } from "lucide-react";
 import { toast } from "sonner";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import NotificationPermission from "../components/notifications/NotificationPermission";
 
 export default function SettingsPage() {
-  const { user, preferences, updatePreferences, isLoading } = useData();
+  const { updatePreferences, isLoading } = useData();
+  const [preferences, setPreferences] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentSection, setCurrentSection] = useState("general");
+  const [pendingChanges, setPendingChanges] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [isPreferencesLoading, setIsPreferencesLoading] = useState(true);
 
-  const handlePreferenceChange = async (key, value) => {
-    try {
-      await updatePreferences({ [key]: value });
-      toast.success("Settings updated");
-    } catch (error) {
-      console.error("Failed to update preference:", error);
-      toast.error("Failed to update settings");
+  // Load preferences on component mount
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        setIsPreferencesLoading(true);
+        const response = await fetch('/api/users/preferences');
+        const data = await response.json();
+        if (data.success) {
+          setPreferences(data.data || {});
+        }
+      } catch (error) {
+        console.error('Failed to load preferences:', error);
+        setPreferences({});
+      } finally {
+        setIsPreferencesLoading(false);
+      }
+    };
+    loadPreferences();
+  }, []);
+
+  const handlePreferenceChange = (key, value) => {
+    setPendingChanges(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveChanges = async () => {
+    if (Object.keys(pendingChanges).length === 0) {
+      toast.info("No changes to save");
+      return;
     }
+
+    setIsSaving(true);
+    try {
+      await updatePreferences(pendingChanges);
+      setPendingChanges({});
+      toast.success("Settings saved successfully");
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+      toast.error("Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Get the effective value (pending change or current preference)
+  const getEffectiveValue = (key, defaultValue) => {
+    return pendingChanges[key] !== undefined ? pendingChanges[key] : (preferences?.[key] ?? defaultValue);
   };
 
   const handleDeleteAccount = async () => {
@@ -52,10 +94,10 @@ export default function SettingsPage() {
 
     setIsDeleting(true);
     try {
-      await base44.functions.invoke('deleteUserAccount');
+      await timelit.functions.deleteUserAccount();
       toast.success("Account deleted. Logging out...");
       setTimeout(() => {
-        base44.auth.logout();
+        timelit.auth.logout();
       }, 2000);
     } catch (error) {
       console.error("Failed to delete account:", error);
@@ -64,7 +106,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (isLoading || !preferences) {
+  if (isLoading || isPreferencesLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-neutral-900">
         <div className="text-sm text-muted-foreground">Loading settings...</div>
@@ -95,18 +137,33 @@ export default function SettingsPage() {
               </h1>
               <p className="text-neutral-400 mt-1">Customize your Timelit experience</p>
             </div>
-            <Select value={currentSection} onValueChange={setCurrentSection}>
-              <SelectTrigger className="w-48 bg-neutral-800 border-neutral-700 text-neutral-100">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-neutral-800 border-neutral-700">
-                {Object.entries(sections).map(([key, label]) => (
-                  <SelectItem key={key} value={key} className="text-neutral-100">
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-3">
+              {Object.keys(pendingChanges).length > 0 && (
+                <div className="text-sm text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-full">
+                  {Object.keys(pendingChanges).length} unsaved change{Object.keys(pendingChanges).length !== 1 ? 's' : ''}
+                </div>
+              )}
+              <Button
+                onClick={handleSaveChanges}
+                disabled={isSaving || Object.keys(pendingChanges).length === 0}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+              <Select value={currentSection} onValueChange={setCurrentSection}>
+                <SelectTrigger className="w-48 bg-neutral-800 border-neutral-700 text-neutral-100">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-neutral-800 border-neutral-700">
+                  {Object.entries(sections).map(([key, label]) => (
+                    <SelectItem key={key} value={key} className="text-neutral-100">
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
@@ -132,7 +189,7 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <Label className="text-neutral-200">Default Task Priority</Label>
                         <Select
-                          value={preferences.default_task_priority || 'medium'}
+                          value={getEffectiveValue('default_task_priority', 'medium')}
                           onValueChange={(value) => handlePreferenceChange('default_task_priority', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -150,7 +207,7 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <Label className="text-neutral-200">Default Task Status</Label>
                         <Select
-                          value={preferences.default_task_status || 'todo'}
+                          value={getEffectiveValue('default_task_status', 'todo')}
                           onValueChange={(value) => handlePreferenceChange('default_task_status', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -173,7 +230,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Display completed tasks in task list</p>
                         </div>
                         <Switch
-                          checked={preferences.show_completed_tasks || false}
+                          checked={getEffectiveValue('show_completed_tasks', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('show_completed_tasks', checked)}
                         />
                       </div>
@@ -184,7 +241,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Automatically delete tasks after completion</p>
                         </div>
                         <Switch
-                          checked={preferences.auto_delete_completed_tasks || false}
+                          checked={getEffectiveValue('auto_delete_completed_tasks', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('auto_delete_completed_tasks', checked)}
                         />
                       </div>
@@ -210,7 +267,7 @@ export default function SettingsPage() {
                     <div className="space-y-2">
                       <Label className="text-neutral-200">Mode</Label>
                       <Select
-                        value={preferences.schedule_mode || 'work'}
+                        value={getEffectiveValue('schedule_mode', 'work')}
                         onValueChange={(value) => handlePreferenceChange('schedule_mode', value)}
                       >
                         <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -230,7 +287,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">Start Time</Label>
                           <Input
                             type="time"
-                            value={preferences.work_start_time || '09:00'}
+                            value={getEffectiveValue('work_start_time', '09:00')}
                             onChange={(e) => handlePreferenceChange('work_start_time', e.target.value)}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />
@@ -239,7 +296,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">End Time</Label>
                           <Input
                             type="time"
-                            value={preferences.work_end_time || '17:00'}
+                            value={getEffectiveValue('work_end_time', '17:00')}
                             onChange={(e) => handlePreferenceChange('work_end_time', e.target.value)}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />
@@ -255,7 +312,7 @@ export default function SettingsPage() {
                         <p className="text-sm text-neutral-400">Block time for lunch</p>
                       </div>
                       <Switch
-                        checked={preferences.lunch_break_enabled || false}
+                        checked={getEffectiveValue('lunch_break_enabled', false)}
                         onCheckedChange={(checked) => handlePreferenceChange('lunch_break_enabled', checked)}
                       />
                     </div>
@@ -266,7 +323,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">Lunch Time</Label>
                           <Input
                             type="time"
-                            value={preferences.lunch_break_start || '12:00'}
+                            value={getEffectiveValue('lunch_break_start', '12:00')}
                             onChange={(e) => handlePreferenceChange('lunch_break_start', e.target.value)}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />
@@ -275,7 +332,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">Duration (minutes)</Label>
                           <Input
                             type="number"
-                            value={preferences.lunch_break_duration || 60}
+                            value={getEffectiveValue('lunch_break_duration', 60)}
                             onChange={(e) => handlePreferenceChange('lunch_break_duration', parseInt(e.target.value))}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />
@@ -308,7 +365,7 @@ export default function SettingsPage() {
                         <Label className="text-neutral-200">Theme</Label>
                         <p className="text-sm text-neutral-400 mb-2">Choose your preferred theme</p>
                         <Select
-                          value={preferences.theme_preference || 'system'}
+                          value={getEffectiveValue('theme_preference', 'system')}
                           onValueChange={(value) => handlePreferenceChange('theme_preference', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -327,7 +384,7 @@ export default function SettingsPage() {
                         <Label className="text-neutral-200">Time Format</Label>
                         <p className="text-sm text-neutral-400 mb-2">12-hour or 24-hour clock</p>
                         <Select
-                          value={preferences.time_format || '12'}
+                          value={getEffectiveValue('time_format', '12')}
                           onValueChange={(value) => handlePreferenceChange('time_format', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -347,7 +404,7 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <Label className="text-neutral-200">Default Calendar View</Label>
                         <Select
-                          value={preferences.default_view || 'week'}
+                          value={getEffectiveValue('default_view', 'week')}
                           onValueChange={(value) => handlePreferenceChange('default_view', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -367,7 +424,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Display Saturday and Sunday in week view</p>
                         </div>
                         <Switch
-                          checked={preferences.weekend_visible !== false}
+                          checked={getEffectiveValue('weekend_visible', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('weekend_visible', checked)}
                         />
                       </div>
@@ -400,7 +457,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Automatically categorize events and tasks using AI</p>
                         </div>
                         <Switch
-                          checked={preferences.auto_categorize_events || false}
+                          checked={getEffectiveValue('auto_categorize_events', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('auto_categorize_events', checked)}
                         />
                       </div>
@@ -413,7 +470,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Automatically find time slots for tasks</p>
                         </div>
                         <Switch
-                          checked={preferences.auto_schedule_tasks_into_calendar || false}
+                          checked={getEffectiveValue('auto_schedule_tasks_into_calendar', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('auto_schedule_tasks_into_calendar', checked)}
                         />
                       </div>
@@ -450,7 +507,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Get notified before events start</p>
                         </div>
                         <Switch
-                          checked={preferences.notification_for_events || false}
+                          checked={getEffectiveValue('notification_for_events', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('notification_for_events', checked)}
                         />
                       </div>
@@ -461,7 +518,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Get notified about upcoming tasks</p>
                         </div>
                         <Switch
-                          checked={preferences.notification_for_tasks || false}
+                          checked={getEffectiveValue('notification_for_tasks', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('notification_for_tasks', checked)}
                         />
                       </div>
@@ -469,7 +526,7 @@ export default function SettingsPage() {
                       <div className="space-y-2">
                         <Label className="text-neutral-200">Default Notification Timing</Label>
                         <Select
-                          value={preferences.default_notification_timing || '15min'}
+                          value={getEffectiveValue('default_notification_timing', '15min')}
                           onValueChange={(value) => handlePreferenceChange('default_notification_timing', value)}
                         >
                           <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -517,7 +574,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_todays_focus !== false}
+                          checked={getEffectiveValue('widget_todays_focus', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_todays_focus', checked)}
                         />
                       </div>
@@ -531,7 +588,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_free_time !== false}
+                          checked={getEffectiveValue('widget_free_time', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_free_time', checked)}
                         />
                       </div>
@@ -545,7 +602,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_workload !== false}
+                          checked={getEffectiveValue('widget_workload', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_workload', checked)}
                         />
                       </div>
@@ -559,7 +616,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_productivity_score || false}
+                          checked={getEffectiveValue('widget_productivity_score', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_productivity_score', checked)}
                         />
                       </div>
@@ -573,7 +630,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_workload_forecast || false}
+                          checked={getEffectiveValue('widget_workload_forecast', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_workload_forecast', checked)}
                         />
                       </div>
@@ -587,7 +644,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_priorities_summary || false}
+                          checked={getEffectiveValue('widget_priorities_summary', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_priorities_summary', checked)}
                         />
                       </div>
@@ -601,7 +658,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_next_up || false}
+                          checked={getEffectiveValue('widget_next_up', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_next_up', checked)}
                         />
                       </div>
@@ -615,7 +672,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_streak_tracker || false}
+                          checked={getEffectiveValue('widget_streak_tracker', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_streak_tracker', checked)}
                         />
                       </div>
@@ -629,7 +686,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_pomodoro || false}
+                          checked={getEffectiveValue('widget_pomodoro', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_pomodoro', checked)}
                         />
                       </div>
@@ -643,7 +700,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_time_budget || false}
+                          checked={getEffectiveValue('widget_time_budget', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_time_budget', checked)}
                         />
                       </div>
@@ -657,7 +714,7 @@ export default function SettingsPage() {
                           </div>
                         </div>
                         <Switch
-                          checked={preferences.widget_mood_tracker || false}
+                          checked={getEffectiveValue('widget_mood_tracker', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('widget_mood_tracker', checked)}
                         />
                       </div>
@@ -668,7 +725,7 @@ export default function SettingsPage() {
                     <div className="space-y-2">
                       <Label className="text-neutral-200">Widget Refresh Rate</Label>
                       <Select
-                        value={preferences.widget_refresh_rate || '1min'}
+                        value={getEffectiveValue('widget_refresh_rate', '1min')}
                         onValueChange={(value) => handlePreferenceChange('widget_refresh_rate', value)}
                       >
                         <SelectTrigger className="bg-neutral-700 border-neutral-600 text-neutral-100">
@@ -712,7 +769,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Schedule tasks in the morning when possible</p>
                         </div>
                         <Switch
-                          checked={preferences.prefer_morning_tasks || false}
+                          checked={getEffectiveValue('prefer_morning_tasks', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('prefer_morning_tasks', checked)}
                         />
                       </div>
@@ -723,7 +780,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Schedule tasks in the afternoon when possible</p>
                         </div>
                         <Switch
-                          checked={preferences.prefer_afternoon_tasks || false}
+                          checked={getEffectiveValue('prefer_afternoon_tasks', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('prefer_afternoon_tasks', checked)}
                         />
                       </div>
@@ -734,7 +791,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Allow scheduling on weekends</p>
                         </div>
                         <Switch
-                          checked={preferences.weekend_work_enabled || false}
+                          checked={getEffectiveValue('weekend_work_enabled', false)}
                           onCheckedChange={(checked) => handlePreferenceChange('weekend_work_enabled', checked)}
                         />
                       </div>
@@ -745,7 +802,7 @@ export default function SettingsPage() {
                           <p className="text-sm text-neutral-400">Schedule longer breaks after consecutive tasks</p>
                         </div>
                         <Switch
-                          checked={preferences.enable_long_breaks !== false}
+                          checked={getEffectiveValue('enable_long_breaks', true)}
                           onCheckedChange={(checked) => handlePreferenceChange('enable_long_breaks', checked)}
                         />
                       </div>
@@ -757,7 +814,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">Break Duration (minutes)</Label>
                           <Input
                             type="number"
-                            value={preferences.break_duration_between_tasks || 15}
+                            value={getEffectiveValue('break_duration_between_tasks', 15)}
                             onChange={(e) => handlePreferenceChange('break_duration_between_tasks', parseInt(e.target.value))}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />
@@ -768,7 +825,7 @@ export default function SettingsPage() {
                             <Label className="text-neutral-200">Long Break Duration (minutes)</Label>
                             <Input
                               type="number"
-                              value={preferences.long_break_duration || 30}
+                              value={getEffectiveValue('long_break_duration', 30)}
                               onChange={(e) => handlePreferenceChange('long_break_duration', parseInt(e.target.value))}
                               className="bg-neutral-700 border-neutral-600 text-neutral-100"
                             />
@@ -779,7 +836,7 @@ export default function SettingsPage() {
                           <Label className="text-neutral-200">Max Consecutive Tasks</Label>
                           <Input
                             type="number"
-                            value={preferences.max_consecutive_tasks || 3}
+                            value={getEffectiveValue('max_consecutive_tasks', 3)}
                             onChange={(e) => handlePreferenceChange('max_consecutive_tasks', parseInt(e.target.value))}
                             className="bg-neutral-700 border-neutral-600 text-neutral-100"
                           />

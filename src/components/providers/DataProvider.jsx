@@ -1,13 +1,10 @@
-
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { User } from "@/api/entities";
-import { UserPreferences } from "@/api/entities";
 import { Event } from "@/api/entities";
 import { Task } from "@/api/entities";
 import { TaskList } from "@/api/entities";
 import { TaskTag } from "@/api/entities";
-import { base44 } from "@/api/base44Client";
-import { TaskScheduler } from '../scheduling/TaskScheduler';
+import { timelit } from "@/api/timelitClient";
+import { SmartTaskScheduler } from '../scheduling/SmartTaskScheduler';
 import { toast } from "sonner";
 import { notificationManager } from "../notifications/NotificationManager";
 
@@ -58,18 +55,13 @@ class UndoManager {
 const undoManager = new UndoManager();
 
 const DataContext = createContext({
-  user: null,
-  preferences: null,
   events: [],
   setEvents: () => {},
   tasks: [],
   isLoading: true,
-  isUserLoading: true,
   isDataLoading: false,
   error: null,
-  refreshUser: () => {},
   refreshData: () => {},
-  updatePreferences: () => {},
   addEvent: () => {},
   bulkAddEvents: () => {},
   updateEvent: () => {},
@@ -148,6 +140,31 @@ class OptimizedCache {
 }
 
 const cache = new OptimizedCache();
+
+// Normalize server task shape -> UI task shape
+function normalizeTask(t) {
+  if (!t) return t;
+  const id = t.id || t._id;
+  const status =
+    t.status ||
+    (typeof t.completed === "boolean" ? (t.completed ? "done" : "todo") : undefined);
+  const due_date =
+    t.due_date || (t.dueDate ? new Date(t.dueDate).toISOString().slice(0, 10) : null);
+  const list_id = t.list_id ?? t.listId ?? null;
+  const tag_ids = t.tag_ids ?? t.tags ?? [];
+  const created_date =
+    t.created_date || (t.createdAt ? new Date(t.createdAt).toISOString() : undefined);
+
+  return {
+    ...t,
+    id,
+    status: status || "todo",
+    due_date,
+    list_id,
+    tag_ids,
+    created_date: created_date || new Date().toISOString(),
+  };
+}
 
 const taskCategoryColors = {
   work: '#3b82f6', personal: '#8b5cf6', learning: '#10b981',
@@ -374,62 +391,10 @@ const fastCategorize = (item, itemType, userPreferences) => {
   }
 };
 
-// 🤖 LLM VERIFICATION (Background refinement)
+// 🤖 LLM VERIFICATION (Background refinement) - DISABLED: API not implemented
 const llmVerifyCategory = async (item, itemType, keywordResult, userPreferences) => {
-  try {
-    const availableCategories = itemType === 'event' 
-      ? (userPreferences?.event_categories || []).map(c => c.name)
-      : taskCategories;
-
-    const prompt = `You are a smart categorization assistant. A ${itemType} has been automatically categorized as "${keywordResult.category}" based on keywords.
-
-Title: "${item.title}"
-Description: "${item.description || 'N/A'}"
-Location: "${item.location || 'N/A'}"
-
-Available categories: ${availableCategories.join(', ')}
-
-Current category: ${keywordResult.category}
-
-Is this categorization correct? If not, which category fits better? Consider the context and nuance.
-
-Return ONLY a JSON object with: {"category": "correct_category", "confidence": "high/medium/low", "reason": "brief explanation"}`;
-
-    const response = await Promise.race([
-      base44.integrations.Core.InvokeLLM({
-        prompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            category: { type: "string" },
-            confidence: { type: "string", enum: ["high", "medium", "low"] },
-            reason: { type: "string" }
-          },
-          required: ["category", "confidence"]
-        }
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('LLM timeout')), 5000))
-    ]);
-
-    if (response?.category && availableCategories.includes(response.category)) {
-      const color = itemType === 'event'
-        ? userPreferences?.event_categories?.find(c => c.name === response.category)?.color || '#8b5cf6'
-        : taskCategoryColors[response.category] || '#8b5cf6';
-      
-      return {
-        category: response.category,
-        color,
-        confidence: 'llm-verified',
-        changed: response.category !== keywordResult.category
-      };
-    }
-    // If LLM response is invalid or category not found among available ones,
-    // return original keyword result but mark as LLM tried (failed to provide valid one).
-    return { ...keywordResult, confidence: 'llm-verified-failed', changed: false }; 
-  } catch (error) {
-    console.warn('LLM verification failed, keeping keyword result:', error.message);
-    return { ...keywordResult, confidence: 'keyword-only', changed: false };
-  }
+  // Return keyword result directly since LLM API is not available
+  return { ...keywordResult, confidence: 'keyword-only', changed: false };
 };
 
 const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulkAddEventsFn, userId, userPreferences) => {
@@ -472,8 +437,8 @@ const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulk
           if (llmResult.changed) {
             // Re-fetch the item's current state to avoid overwriting newer changes
             const currentItem = item.itemType === 'event' 
-              ? (await base44.entities.Event.get(item.id)) 
-              : (await base44.entities.Task.get(item.id));
+              ? (await timelit.entities.Event.get(item.id)) 
+              : (await timelit.entities.Task.get(item.id));
 
             if (currentItem && (currentItem.category !== llmResult.category || currentItem.color !== llmResult.color)) {
               if (item.itemType === 'event') {
@@ -499,16 +464,13 @@ const batchCategorize = async (itemsToProcess, updateEventFn, updateTaskFn, bulk
 
 
 export function DataProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [preferences, setPreferences] = useState(null);
-  const [isUserLoading, setIsUserLoading] = useState(true);
-
   const [events, setEvents] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [preferences, setPreferences] = useState({});
   const [isDataLoading, setIsDataLoading] = useState(false);
 
   const [error, setError] = useState(null);
-  const isLoading = isUserLoading || isDataLoading;
+  const isLoading = isDataLoading;
 
   const [categorizationProgress, setCategorizationProgress] = useState({
     completed: 0,
@@ -520,51 +482,14 @@ export function DataProvider({ children }) {
   const [canRedoState, setRedoState] = useState(false);
 
   const dataLoadedRef = useRef(false);
-  const userLoadedRef = useRef(false);
+  const addTaskInFlightRef = useRef(false);
 
   const updateUndoRedoStates = useCallback(() => {
     setCanUndoState(undoManager.canUndo());
     setRedoState(undoManager.canRedo());
   }, []);
 
-  const loadUserData = useCallback(async () => {
-    if (userLoadedRef.current) return;
-
-    try {
-      setIsUserLoading(true);
-      setError(null);
-
-      const userData = await cache.get('current-user', () => User.me(), 600000);
-      setUser(userData);
-
-      if (userData) {
-        const prefsData = await cache.get(
-          `preferences-${userData.email}`,
-          () => UserPreferences.filter({ created_by: userData.email }),
-          600000
-        );
-
-        if (prefsData.length > 0) {
-          setPreferences(prefsData[0]);
-        } else {
-          const defaultPrefs = { created_by: userData.email };
-          const created = await UserPreferences.create(defaultPrefs);
-          setPreferences(created);
-          cache.cache.set(`preferences-${userData.email}`, [created]);
-        }
-      }
-
-      userLoadedRef.current = true;
-    } catch (err) {
-      console.error("Error loading user:", err);
-      setError(err.message || "Failed to load user data");
-    } finally {
-      setIsUserLoading(false);
-    }
-  }, []);
-
   const loadAppData = useCallback(async (force = false) => {
-    if (!user) return;
     if (isDataLoading && !force) return;
     if (dataLoadedRef.current && !force) return;
 
@@ -572,21 +497,28 @@ export function DataProvider({ children }) {
       setIsDataLoading(true);
       setError(null);
 
-      const [eventsResult, tasksResult] = await Promise.allSettled([
+      const [eventsResult, tasksResult, preferencesResult] = await Promise.allSettled([
         cache.get(
-          `events-${user.email}`,
-          () => Event.filter({ created_by: user.email }, "-start_time"),
+          'events',
+          () => Event.filter({}, "-start_time"),
           180000 // 3 min cache
         ),
         cache.get(
-          `tasks-${user.email}`,
-          () => Task.filter({ created_by: user.email }, "-created_date"),
+          'tasks',
+          () => Task.filter({}, "-created_date"),
+          180000 // 3 min cache
+        ),
+        cache.get(
+          'preferences',
+          () => timelit.entities.User.preferences(),
           180000 // 3 min cache
         ),
       ]);
 
       const localEvents = eventsResult.status === 'fulfilled' ? eventsResult.value || [] : [];
-      const allTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
+      const rawTasks = tasksResult.status === 'fulfilled' ? tasksResult.value || [] : [];
+      const allTasks = rawTasks.map(normalizeTask);
+      const userPreferences = preferencesResult.status === 'fulfilled' ? preferencesResult.value || {} : {};
 
       const taskIndex = new Map(allTasks.map(t => [t.id, t]));
 
@@ -608,10 +540,53 @@ export function DataProvider({ children }) {
         return event;
       });
 
-      setEvents(processedEvents);
+      // Add task-scheduled events to the events list
+      const taskScheduledEvents = allTasks
+        .filter(task => task.scheduled_start_time && task.status !== 'done' && task.status !== 'wont_do')
+        .map(task => ({
+          id: `task-${task.id}`,
+          title: task.title,
+          start_time: task.scheduled_start_time,
+          end_time: new Date(new Date(task.scheduled_start_time).getTime() + (task.duration || 60) * 60 * 1000).toISOString(),
+          category: task.category,
+          color: task.color,
+          priority: task.priority,
+          task_id: task.id,
+          task_status: task.status,
+          task_priority: task.priority,
+          isTaskEvent: true,
+          description: task.description,
+        }));
+
+      // Add task due date events to the events list
+      const taskDueDateEvents = allTasks
+        .filter(task => task.due_date && task.status !== 'done' && task.status !== 'wont_do' && !task.scheduled_start_time)
+        .map(task => ({
+          id: `task-due-${task.id}`,
+          title: `📅 ${task.title}`,
+          start_time: task.due_date,
+          end_time: task.due_date,
+          category: task.category,
+          color: task.color,
+          priority: task.priority,
+          task_id: task.id,
+          task_status: task.status,
+          task_priority: task.priority,
+          isTaskEvent: true,
+          isAllDay: true,
+          description: task.description,
+        }));
+
+      const allEvents = [...processedEvents, ...taskScheduledEvents, ...taskDueDateEvents];
+
+      // ✅ IMPORTANT: Clear and set fresh state
+      setEvents(allEvents);
       setTasks(allTasks);
+      setPreferences(userPreferences);
 
       dataLoadedRef.current = true;
+
+      console.log(`✅ Loaded ${allEvents.length} events and ${allTasks.length} tasks`);
 
     } catch (err) {
       console.error("Error loading data:", err);
@@ -619,57 +594,23 @@ export function DataProvider({ children }) {
     } finally {
       setIsDataLoading(false);
     }
-  }, [user, isDataLoading]);
+  }, []);
 
   const refreshData = useCallback(async () => {
-    if (user?.email) {
-      cache.invalidate(`events-${user.email}`);
-      cache.invalidate(`tasks-${user.email}`);
-    }
+    cache.invalidate('events');
+    cache.invalidate('tasks');
     dataLoadedRef.current = false;
     await loadAppData(true);
-  }, [loadAppData, user]);
-
-  const refreshUser = useCallback(async () => {
-    userLoadedRef.current = false;
-    cache.invalidate('current-user');
-    if (user) cache.invalidate(`preferences-${user.email}`);
-    await loadUserData();
-  }, [loadUserData, user]);
-
-  const updatePreferences = useCallback(async (newPrefs) => {
-    const originalPreferences = preferences;
-    
-    setPreferences(prev => ({ ...prev, ...newPrefs }));
-
-    try {
-      if (preferences?.id) {
-        base44.entities.UserPreferences.update(preferences.id, newPrefs).then(() => {
-          cache.invalidate(`preferences-${user.email}`);
-        }).catch(err => {
-          console.error('Background update preferences failed:', err);
-          setPreferences(originalPreferences);
-        });
-      } else if (user?.email) {
-        const created = await base44.entities.UserPreferences.create({ ...newPrefs, created_by: user.email });
-        setPreferences(created);
-        cache.cache.set(`preferences-${user.email}`, [created]);
-      }
-    } catch (error) {
-      console.error('Failed to update preferences:', error);
-      setPreferences(originalPreferences);
-      throw error;
-    }
-  }, [preferences, user]);
+  }, [loadAppData]);
 
   const updateEvent = useCallback(async (eventId, updates) => {
     const originalEvent = events.find(e => e.id === eventId);
-    
+
     setEvents(prev => prev.map(e => e.id === eventId ? { ...e, ...updates } : e));
 
     try {
-      base44.entities.Event.update(eventId, updates).then(() => {
-        cache.invalidate(`events-${user.email}`);
+      timelit.entities.Event.update(eventId, updates).then(() => {
+        cache.invalidate('events');
       }).catch(err => {
         console.error('Background update event failed:', err);
         setEvents(prev => prev.map(e => e.id === eventId ? originalEvent : e));
@@ -690,11 +631,11 @@ export function DataProvider({ children }) {
       setEvents(prev => prev.map(e => e.id === eventId ? originalEvent : e));
       throw error;
     }
-  }, [user, events, updateUndoRedoStates]);
+  }, [events, updateUndoRedoStates]);
 
   const updateTask = useCallback(async (taskId, updates) => {
     const originalTask = tasks.find(t => t.id === taskId);
-    
+
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
 
     setEvents(prev => prev.map(event => {
@@ -713,9 +654,47 @@ export function DataProvider({ children }) {
       return event;
     }));
 
+    // Update task-scheduled events and task-due events when task changes
+    setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== taskId));
+    const updatedTask = { ...originalTask, ...updates };
+    if (updatedTask.scheduled_start_time && updatedTask.status !== 'done' && updatedTask.status !== 'wont_do') {
+      const taskEvent = {
+        id: `task-${taskId}`,
+        title: updatedTask.title,
+        start_time: updatedTask.scheduled_start_time,
+        end_time: new Date(new Date(updatedTask.scheduled_start_time).getTime() + (updatedTask.duration || 60) * 60 * 1000).toISOString(),
+        category: updatedTask.category,
+        color: updatedTask.color,
+        priority: updatedTask.priority,
+        task_id: taskId,
+        task_status: updatedTask.status,
+        task_priority: updatedTask.priority,
+        isTaskEvent: true,
+        description: updatedTask.description,
+      };
+      setEvents(prev => [...prev, taskEvent]);
+    } else if (updatedTask.due_date && updatedTask.status !== 'done' && updatedTask.status !== 'wont_do' && !updatedTask.scheduled_start_time) {
+      const taskDueDateEvent = {
+        id: `task-due-${taskId}`,
+        title: `📅 ${updatedTask.title}`,
+        start_time: updatedTask.due_date,
+        end_time: updatedTask.due_date,
+        category: updatedTask.category,
+        color: updatedTask.color,
+        priority: updatedTask.priority,
+        task_id: taskId,
+        task_status: updatedTask.status,
+        task_priority: updatedTask.priority,
+        isTaskEvent: true,
+        isAllDay: true,
+        description: updatedTask.description,
+      };
+      setEvents(prev => [...prev, taskDueDateEvent]);
+    }
+
     try {
-      base44.entities.Task.update(taskId, updates).then(() => {
-        cache.invalidate(`tasks-${user.email}`);
+      timelit.entities.Task.update(taskId, updates).then(() => {
+        cache.invalidate('tasks');
       }).catch(err => {
         console.error('Background update task failed:', err);
         if (originalTask) {
@@ -729,33 +708,33 @@ export function DataProvider({ children }) {
                 ...event,
                 title: originalTitle,
                 task_status: originalTask.status,
-                category: originalTask.category,       
-                color: originalTask.color,       
+                category: originalTask.category,
+                color: originalTask.color,
               };
             }
             return event;
           }));
         }
       });
-      
+
       if (updates.category !== undefined || updates.color !== undefined) {
         const linkedEvents = events.filter(e => e.task_id === taskId);
         if (linkedEvents.length > 0) {
           Promise.all(
-            linkedEvents.map(event => 
-              base44.entities.Event.update(event.id, {
+            linkedEvents.map(event =>
+              timelit.entities.Event.update(event.id, {
                 category: updates.category !== undefined ? updates.category : event.category,
                 color: updates.color !== undefined ? updates.color : event.color
               })
             )
           ).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           }).catch(err => {
             console.error('Background update linked events failed:', err);
           });
         }
       }
-      
+
       if (originalTask) {
         undoManager.addAction({
           type: 'TASK_UPDATE',
@@ -779,8 +758,8 @@ export function DataProvider({ children }) {
               ...event,
               title: originalTitle,
               task_status: originalTask.status,
-              category: originalTask.category,       
-              color: originalTask.color,       
+              category: originalTask.category,
+              color: originalTask.color,
             };
           }
           return event;
@@ -788,7 +767,7 @@ export function DataProvider({ children }) {
       }
       throw error;
     }
-  }, [user, tasks, events, updateUndoRedoStates]);
+  }, [tasks, events, updateUndoRedoStates]);
 
   const bulkAddEvents = useCallback(async (eventDataArray) => {
     if (!eventDataArray || eventDataArray.length === 0) return [];
@@ -801,40 +780,50 @@ export function DataProvider({ children }) {
     setEvents(prev => [...tempEvents, ...prev]);
 
     try {
-      const newEvents = await base44.entities.Event.bulkCreate(eventDataArray.map(e => ({ ...e, created_by: user.email })));
+      const newEvents = await timelit.entities.Event.bulkCreate(eventDataArray);
       const tempIds = new Set(tempEvents.map(te => te.id));
       setEvents(prev => [...newEvents, ...prev.filter(e => !tempIds.has(e.id))]);
-      cache.invalidate(`events-${user.email}`);
+      cache.invalidate('events');
       return newEvents;
     } catch (error) {
       const tempIds = new Set(tempEvents.map(te => te.id));
       setEvents(prev => prev.filter(e => !tempIds.has(e.id)));
       throw error;
     }
-  }, [user]);
+  }, []);
 
   const addEvent = useCallback(async (eventData) => {
     const tempId = `temp-${Date.now()}`;
-    
-    // Apply default and fast categorization values immediately
-    const categorizedResult = fastCategorize(eventData, 'event', preferences);
+
+    const categorizedResult = fastCategorize(eventData, 'event', null);
 
     const finalEventData = {
       ...eventData,
-      category: eventData.category || categorizedResult.category || preferences?.default_event_category || 'personal',
-      priority: eventData.priority || preferences?.default_event_priority || 'medium',
-      color: eventData.color || categorizedResult.color || preferences?.event_categories?.find(c => c.name === (eventData.category || preferences?.default_event_category || 'personal'))?.color || '#8b5cf6',
+      start_time: typeof eventData.start_time === 'string' ? eventData.start_time : eventData.start_time?.toISOString(),
+      end_time: typeof eventData.end_time === 'string' ? eventData.end_time : eventData.end_time?.toISOString(),
+      category: eventData.category || categorizedResult.category || 'personal',
+      priority: eventData.priority || 'medium',
+      color: eventData.color || categorizedResult.color || '#8b5cf6',
     };
-    
+
     const tempEvent = { ...finalEventData, id: tempId };
-    
+
+    // Add temp event immediately for UI feedback
     setEvents(prev => [tempEvent, ...prev]);
 
     try {
-      const newEvent = await base44.entities.Event.create({ ...finalEventData, created_by: user.email });
-      
-      setEvents(prev => prev.map(e => e.id === tempId ? newEvent : e));
-      cache.invalidate(`events-${user.email}`);
+      const newEvent = await timelit.entities.Event.create(finalEventData);
+
+      console.log('✅ Event created:', newEvent);
+
+      // Replace temp event with real event from server
+      setEvents(prev => {
+        const filtered = prev.filter(e => e.id !== tempId);
+        return [newEvent, ...filtered];
+      });
+
+      // Invalidate cache to trigger refetch if needed
+      cache.invalidate('events');
 
       undoManager.addAction({
         type: 'EVENT_CREATE',
@@ -842,63 +831,110 @@ export function DataProvider({ children }) {
       });
       updateUndoRedoStates();
 
+      toast.success('Event added!');
       return newEvent;
     } catch (error) {
+      console.error('Failed to create event:', error);
       setEvents(prev => prev.filter(e => e.id !== tempId));
+      toast.error('Failed to add event');
       throw error;
     }
-  }, [user, preferences, updateUndoRedoStates]);
+  }, [updateUndoRedoStates, preferences]);
 
   const addTask = useCallback(async (taskData) => {
+    if (addTaskInFlightRef.current) {
+      return;
+    }
+    addTaskInFlightRef.current = true;
+
     const tempId = `temp-${Date.now()}-${Math.random()}`;
-    
-    // Apply default and fast categorization values immediately
-    const categorizedResult = fastCategorize(taskData, 'task', preferences);
+
+    const categorizedResult = fastCategorize(taskData, 'task', null);
 
     const finalTaskData = {
       ...taskData,
-      status: taskData.status || preferences?.default_task_status || 'todo',
-      priority: taskData.priority || preferences?.default_task_priority || 'medium',
+      status: taskData.status || 'todo',
+      priority: taskData.priority || 'medium',
       duration: taskData.duration || 60,
       category: taskData.category || categorizedResult.category || 'personal',
       color: taskData.color || categorizedResult.color || '#8b5cf6',
+      tags: taskData.tags || [],
     };
-    
+
+    // Safeguard: If task has no due date, default to today or within next 3 days
+    if (!finalTaskData.due_date) {
+      const today = new Date();
+      const randomDays = Math.floor(Math.random() * 3); // 0-2 days
+      const defaultDate = new Date(today);
+      defaultDate.setDate(today.getDate() + randomDays);
+      finalTaskData.due_date = defaultDate.toISOString().split('T')[0];
+    }
+
     const tempTask = { ...finalTaskData, id: tempId, created_date: new Date().toISOString() };
 
     setTasks(prev => [tempTask, ...prev]);
 
     try {
-      const newTask = await base44.entities.Task.create({ ...finalTaskData, created_by: user.email });
+      const createdTask = await timelit.entities.Task.create(finalTaskData);
+      const normalized = normalizeTask(createdTask);
 
-      setTasks(prev => prev.map(t => t.id === tempId ? newTask : t));
-      cache.invalidate(`tasks-${user.email}`);
+      console.log('✅ Task created:', normalized);
+      console.log('(a) Task created → Task added to local state');
+
+      // Replace temp task with real task from server
+      setTasks(prev => {
+        const filtered = prev.filter(t => t.id !== tempId);
+        return [normalized, ...filtered];
+      });
+
+      // Add task due date event to events if task has due date and isn't scheduled
+      if (normalized.due_date && normalized.status !== 'done' && normalized.status !== 'wont_do' && !normalized.scheduled_start_time) {
+        const taskDueDateEvent = {
+          id: `task-due-${normalized.id}`,
+          title: `📅 ${normalized.title}`,
+          start_time: normalized.due_date,
+          end_time: normalized.due_date,
+          category: normalized.category,
+          color: normalized.color,
+          priority: normalized.priority,
+          task_id: normalized.id,
+          task_status: normalized.status,
+          task_priority: normalized.priority,
+          isTaskEvent: true,
+          isAllDay: true,
+          description: normalized.description,
+        };
+        setEvents(prev => [...prev, taskDueDateEvent]);
+      }
+
+      cache.invalidate('tasks');
 
       undoManager.addAction({
         type: 'TASK_CREATE',
-        data: newTask
+        data: normalized
       });
       updateUndoRedoStates();
 
+      toast.success('Task added!');
+
+      // Auto-schedule task into calendar if enabled
       if (preferences?.auto_schedule_tasks_into_calendar) {
         setTimeout(async () => {
           try {
-            // Fetch latest data for scheduling to ensure accuracy
-            const allCurrentEvents = await base44.entities.Event.filter({ created_by: user.email });
-            const allCurrentTasks = await base44.entities.Task.filter({ created_by: user.email });
-            const scheduler = new TaskScheduler(allCurrentEvents, allCurrentTasks, preferences);
-            const result = scheduler.scheduleTask(newTask);
+            // Use the current tasks state plus the newly created task
+            const currentTasks = await Task.filter({}, "-created_date");
+            const allTasks = currentTasks.map(normalizeTask);
+            const scheduler = new SmartTaskScheduler(events, allTasks, preferences);
+            const result = scheduler.scheduleTask(normalized);
 
-            if (result?.success) {
-              if (result.newEvents?.length > 0) {
-                const eventsWithTaskInfo = result.newEvents.map(event => ({
-                  ...event,
-                  category: newTask.category || event.category,
-                  color: newTask.color || event.color
-                }));
-                await bulkAddEvents(eventsWithTaskInfo);
-              }
-              await updateTask(newTask.id, result.taskUpdate);
+            if (result?.success && result.newEvents?.length > 0) {
+              const scheduledEvent = result.newEvents[0];
+              await addEvent(scheduledEvent);
+              console.log('(b) Task added to calendar data → Calendar re-renders');
+              console.log('✅ Task auto-scheduled:', scheduledEvent);
+              await updateTask(normalized.id, result.taskUpdate);
+            } else {
+              console.log('⚠️ Task not auto-scheduled - no suitable time found');
             }
           } catch (error) {
             console.error("Auto-scheduling error:", error);
@@ -906,19 +942,19 @@ export function DataProvider({ children }) {
         }, 100);
       }
 
-      return newTask;
+      addTaskInFlightRef.current = false;
+      return normalized;
     } catch (error) {
+      console.error('Failed to create task:', error);
       setTasks(prev => prev.filter(t => t.id !== tempId));
+      addTaskInFlightRef.current = false;
+      toast.error('Failed to add task');
       throw error;
     }
-  }, [user, preferences, bulkAddEvents, updateTask, updateUndoRedoStates]);
+  }, [updateUndoRedoStates, preferences]);
 
   const triggerCategorization = useCallback(async () => {
     if (categorizationProgress.isActive) {
-      return;
-    }
-
-    if (!user || !user.email) {
       return;
     }
 
@@ -936,13 +972,13 @@ export function DataProvider({ children }) {
     toast.info(`Starting organization for ${allUncategorized.length} items...`);
 
     try {
-      const processedCount = await batchCategorize(allUncategorized, updateEvent, updateTask, bulkAddEvents, user.email, preferences);
+      const processedCount = await batchCategorize(allUncategorized, updateEvent, updateTask, bulkAddEvents, null, null);
       setCategorizationProgress({ completed: processedCount, total: allUncategorized.length, isActive: false });
 
       if (processedCount > 0) {
         toast.success(`Organization complete! ${processedCount} items initially categorized.`);
         // Refresh data to ensure UI is fully consistent, especially if some updates were delayed or failed silently.
-        await refreshData(); 
+        await refreshData();
       } else {
         toast.info("No items were categorized or all were already categorized.");
       }
@@ -952,7 +988,7 @@ export function DataProvider({ children }) {
       setCategorizationProgress({ completed: 0, total: 0, isActive: false });
     }
 
-  }, [user, events, tasks, updateEvent, updateTask, bulkAddEvents, categorizationProgress.isActive, refreshData, preferences]);
+  }, [events, tasks, updateEvent, updateTask, bulkAddEvents, categorizationProgress.isActive, refreshData]);
 
   const deleteEvent = useCallback(async (eventId) => {
     const eventToDelete = events.find(e => e.id === eventId);
@@ -965,16 +1001,19 @@ export function DataProvider({ children }) {
     }
 
     try {
-      Event.delete(eventId).then(() => {
-        cache.invalidate(`events-${user.email}`);
-      }).catch(err => {
-        console.error("Background Event deletion failed:", err);
-        setEvents(prev => eventToDelete ? [eventToDelete, ...prev] : prev);
-      });
-      
+      // Skip server deletion for virtual task-due events
+      if (!eventId.startsWith('task-due-')) {
+        Event.delete(eventId).then(() => {
+          cache.invalidate('events');
+        }).catch(err => {
+          console.error("Background Event deletion failed:", err);
+          setEvents(prev => eventToDelete ? [eventToDelete, ...prev] : prev);
+        });
+      }
+
       if (deletedTask) {
         Task.delete(deletedTask.id).then(() => {
-          cache.invalidate(`tasks-${user.email}`);
+          cache.invalidate('tasks');
         }).catch(err => {
           console.error("Background Task deletion failed (linked to event):", err);
           setTasks(prev => [deletedTask, ...prev]);
@@ -996,22 +1035,22 @@ export function DataProvider({ children }) {
       }
       throw error;
     }
-  }, [user, events, tasks, updateUndoRedoStates]);
+  }, [events, tasks, updateUndoRedoStates]);
 
   const deleteTask = useCallback(async (taskId) => {
     const taskToDelete = tasks.find(t => t.id === taskId);
     const linkedEvents = events.filter(e => e.task_id === taskId);
-    
+
     setTasks(prev => prev.filter(t => t.id !== taskId));
-    setEvents(prev => prev.filter(e => e.task_id !== taskId));
+    setEvents(prev => prev.filter(e => e.task_id !== taskId || e.isTaskEvent));
 
     try {
       Promise.all([
         ...linkedEvents.map(e => Event.delete(e.id)),
         Task.delete(taskId)
       ]).then(() => {
-        cache.invalidate(`tasks-${user.email}`);
-        cache.invalidate(`events-${user.email}`);
+        cache.invalidate('tasks');
+        cache.invalidate('events');
       }).catch(err => {
         console.error("Background Task/linked events deletion failed:", err);
         if (taskToDelete) setTasks(prev => [taskToDelete, ...prev]);
@@ -1031,7 +1070,7 @@ export function DataProvider({ children }) {
       setEvents(prev => [...linkedEvents, ...prev]);
       throw error;
     }
-  }, [user, events, tasks, updateUndoRedoStates]);
+  }, [events, tasks, updateUndoRedoStates]);
 
   const deleteEventSeries = useCallback(async (groupId) => {
     if (!groupId) return;
@@ -1040,25 +1079,20 @@ export function DataProvider({ children }) {
 
     try {
       await Promise.all(seriesEvents.map(e => Event.delete(e.id)));
-      cache.invalidate(`events-${user.email}`);
+      cache.invalidate('events');
     } catch (error) {
       dataLoadedRef.current = false;
       await loadAppData(true);
       throw error;
     }
-  }, [user, events, loadAppData]);
+  }, [events, loadAppData]);
 
   const regenerateSchedule = useCallback(async () => {
-    if (!user) {
-      toast.error("Must be logged in");
-      return;
-    }
-
     toast.info("Regenerating schedule...");
 
     try {
-      const activeTasks = await Task.filter({ created_by: user.email, status: { '$ne': 'done' } });
-      const currentEvents = await Event.filter({ created_by: user.email });
+      const activeTasks = await Task.filter({ status: { '$ne': 'done' } });
+      const currentEvents = await Event.filter({});
 
       const eventsToDelete = currentEvents.filter(e => e.ai_suggested || e.task_id);
       if (eventsToDelete.length > 0) {
@@ -1067,7 +1101,7 @@ export function DataProvider({ children }) {
 
       const manualEvents = currentEvents.filter(e => !e.ai_suggested && !e.task_id);
 
-      const scheduler = new TaskScheduler(manualEvents, activeTasks, preferences);
+      const scheduler = new SmartTaskScheduler(manualEvents, activeTasks, null);
       const allNewEvents = [];
       const allTaskUpdates = [];
 
@@ -1090,7 +1124,7 @@ export function DataProvider({ children }) {
         }
       }
 
-      const eventsForBulkCreate = allNewEvents.map(e => ({ ...e, created_by: user.email }));
+      const eventsForBulkCreate = allNewEvents;
 
       if (eventsForBulkCreate.length > 0) {
         await Event.bulkCreate(eventsForBulkCreate);
@@ -1106,7 +1140,7 @@ export function DataProvider({ children }) {
       console.error("Regeneration error:", error);
       toast.error("Failed to regenerate schedule");
     }
-  }, [user, preferences, refreshData]);
+  }, [refreshData]);
 
   const undo = useCallback(async () => {
     const action = undoManager.undo();
@@ -1117,14 +1151,14 @@ export function DataProvider({ children }) {
         case 'EVENT_CREATE':
           setEvents(prev => prev.filter(e => e.id !== action.data.id));
           Event.delete(action.data.id).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
         case 'EVENT_UPDATE':
           setEvents(prev => prev.map(e => e.id === action.data.id ? action.data.previous : e));
           Event.update(action.data.id, action.data.previous).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
@@ -1133,14 +1167,14 @@ export function DataProvider({ children }) {
           if (action.data.task) {
             setTasks(prev => [action.data.task, ...prev]);
           }
-          Event.create({ ...action.data.event, created_by: user.email }).then((restoredEvent) => {
+          Event.create(action.data.event).then((restoredEvent) => {
             setEvents(prev => prev.map(e => e.id === action.data.event.id ? restoredEvent : e));
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
 
             if (action.data.task) {
-              Task.create({ ...action.data.task, created_by: user.email }).then((restoredTask) => {
+              Task.create(action.data.task).then((restoredTask) => {
                 setTasks(prev => prev.map(t => t.id === action.data.task.id ? restoredTask : t));
-                cache.invalidate(`tasks-${user.email}`);
+                cache.invalidate('tasks');
                 if (action.data.event.task_id && restoredTask.id !== action.data.task.id) {
                     Event.update(restoredEvent.id, { task_id: restoredTask.id });
                     setEvents(prev => prev.map(e => e.id === restoredEvent.id ? { ...e, task_id: restoredTask.id } : e));
@@ -1152,8 +1186,9 @@ export function DataProvider({ children }) {
 
         case 'TASK_CREATE':
           setTasks(prev => prev.filter(t => t.id !== action.data.id));
+          setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== action.data.id));
           Task.delete(action.data.id).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1175,8 +1210,27 @@ export function DataProvider({ children }) {
             }
             return event;
           }));
+          // Restore task-scheduled event to previous state
+          setEvents(prev => prev.filter(event => !event.isTaskEvent || event.task_id !== action.data.id));
+          if (action.data.previous.scheduled_start_time && action.data.previous.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.id}`,
+              title: action.data.previous.title,
+              start_time: action.data.previous.scheduled_start_time,
+              end_time: new Date(new Date(action.data.previous.scheduled_start_time).getTime() + (action.data.previous.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.previous.category,
+              color: action.data.previous.color,
+              priority: action.data.previous.priority,
+              task_id: action.data.id,
+              task_status: action.data.previous.status,
+              task_priority: action.data.previous.priority,
+              isTaskEvent: true,
+              description: action.data.previous.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
           Task.update(action.data.id, action.data.previous).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1185,21 +1239,39 @@ export function DataProvider({ children }) {
           if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
             setEvents(prev => [...action.data.linkedEvents, ...prev]);
           }
-          Task.create({ ...action.data.task, created_by: user.email }).then((restoredTask) => {
+          // Restore task-scheduled event if task was scheduled
+          if (action.data.task.scheduled_start_time && action.data.task.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.task.id}`,
+              title: action.data.task.title,
+              start_time: action.data.task.scheduled_start_time,
+              end_time: new Date(new Date(action.data.task.scheduled_start_time).getTime() + (action.data.task.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.task.category,
+              color: action.data.task.color,
+              priority: action.data.task.priority,
+              task_id: action.data.task.id,
+              task_status: action.data.task.status,
+              task_priority: action.data.task.priority,
+              isTaskEvent: true,
+              description: action.data.task.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
+          Task.create(action.data.task).then((restoredTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.task.id ? restoredTask : t));
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
 
             if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
               Promise.all(
                 action.data.linkedEvents.map(event =>
-                  Event.create({ ...event, created_by: user.email, task_id: restoredTask.id })
+                  Event.create({ ...event, task_id: restoredTask.id })
                 )
               ).then((restoredEvents) => {
                 setEvents(prev => {
                   const filtered = prev.filter(e => !action.data.linkedEvents.some(le => le.id === e.id));
                   return [...restoredEvents, ...filtered];
                 });
-                cache.invalidate(`events-${user.email}`);
+                cache.invalidate('events');
               });
             }
           });
@@ -1216,7 +1288,7 @@ export function DataProvider({ children }) {
     } finally {
       updateUndoRedoStates();
     }
-  }, [user, events, tasks, refreshData, updateUndoRedoStates]);
+  }, [events, tasks, refreshData, updateUndoRedoStates]);
 
   const redo = useCallback(async () => {
     const action = undoManager.redo();
@@ -1226,16 +1298,16 @@ export function DataProvider({ children }) {
       switch (action.type) {
         case 'EVENT_CREATE':
           setEvents(prev => [action.data, ...prev]);
-          Event.create({ ...action.data, created_by: user.email }).then((recreatedEvent) => {
+          Event.create(action.data).then((recreatedEvent) => {
             setEvents(prev => prev.map(e => e.id === action.data.id ? recreatedEvent : e));
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
         case 'EVENT_UPDATE':
           setEvents(prev => prev.map(e => e.id === action.data.id ? { ...e, ...action.data.updates } : e));
           Event.update(action.data.id, action.data.updates).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           break;
 
@@ -1245,20 +1317,38 @@ export function DataProvider({ children }) {
             setTasks(prev => prev.filter(t => t.id !== action.data.task.id));
           }
           Event.delete(action.data.event.id).then(() => {
-            cache.invalidate(`events-${user.email}`);
+            cache.invalidate('events');
           });
           if (action.data.task) {
             Task.delete(action.data.task.id).then(() => {
-              cache.invalidate(`tasks-${user.email}`);
+              cache.invalidate('tasks');
             });
           }
           break;
 
         case 'TASK_CREATE':
           setTasks(prev => [action.data, ...prev]);
-          Task.create({ ...action.data, created_by: user.email }).then((recreatedTask) => {
+          // Restore task-scheduled event if task was scheduled
+          if (action.data.scheduled_start_time && action.data.status !== 'done') {
+            const taskEvent = {
+              id: `task-${action.data.id}`,
+              title: action.data.title,
+              start_time: action.data.scheduled_start_time,
+              end_time: new Date(new Date(action.data.scheduled_start_time).getTime() + (action.data.duration || 60) * 60 * 1000).toISOString(),
+              category: action.data.category,
+              color: action.data.color,
+              priority: action.data.priority,
+              task_id: action.data.id,
+              task_status: action.data.status,
+              task_priority: action.data.priority,
+              isTaskEvent: true,
+              description: action.data.description,
+            };
+            setEvents(prev => [...prev, taskEvent]);
+          }
+          Task.create(action.data).then((recreatedTask) => {
             setTasks(prev => prev.map(t => t.id === action.data.id ? recreatedTask : t));
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1281,7 +1371,7 @@ export function DataProvider({ children }) {
             return event;
           }));
           Task.update(action.data.id, action.data.updates).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           break;
 
@@ -1291,13 +1381,13 @@ export function DataProvider({ children }) {
             setEvents(prev => prev.filter(e => !action.data.linkedEvents.some(le => le.id === e.id)));
           }
           Task.delete(action.data.task.id).then(() => {
-            cache.invalidate(`tasks-${user.email}`);
+            cache.invalidate('tasks');
           });
           if (action.data.linkedEvents && action.data.linkedEvents.length > 0) {
             Promise.all(
               action.data.linkedEvents.map(event => Event.delete(event.id))
             ).then(() => {
-                cache.invalidate(`events-${user.email}`);
+                cache.invalidate('events');
             });
           }
           break;
@@ -1313,18 +1403,14 @@ export function DataProvider({ children }) {
     } finally {
       updateUndoRedoStates();
     }
-  }, [user, events, tasks, refreshData, updateUndoRedoStates]);
+  }, [events, tasks, refreshData, updateUndoRedoStates]);
 
   useEffect(() => {
-    if (!userLoadedRef.current) loadUserData();
-  }, [loadUserData]);
+    if (!dataLoadedRef.current) loadAppData();
+  }, [loadAppData]);
 
   useEffect(() => {
-    if (user && !isUserLoading && !dataLoadedRef.current) loadAppData();
-  }, [user, isUserLoading, loadAppData]);
-
-  useEffect(() => {
-    if (!user || !preferences?.auto_categorize_events || isDataLoading || categorizationProgress.isActive) return;
+    if (isDataLoading || categorizationProgress.isActive) return;
 
     const hasUncategorizedEvents = events.some(e => !e.category);
     const hasUncategorizedTasks = tasks.some(t => !t.category);
@@ -1336,12 +1422,13 @@ export function DataProvider({ children }) {
       }, 500); // Debounce to prevent immediate categorization on every data load/change
       return () => clearTimeout(handler);
     }
-  }, [user, preferences?.auto_categorize_events, isDataLoading, events, tasks, triggerCategorization, categorizationProgress.isActive]);
+  }, [isDataLoading, events, tasks, triggerCategorization, categorizationProgress.isActive]);
 
   useEffect(() => {
-    if (!user || !preferences || isDataLoading) return;
+    if (isDataLoading) return;
 
-    const notificationsEnabled = preferences.notification_for_events || preferences.notification_for_tasks;
+    // Enable notifications by default
+    const notificationsEnabled = true;
     const browserPermissionGranted = notificationManager.getPermissionStatus() === 'granted';
 
     if (notificationsEnabled && browserPermissionGranted) {
@@ -1354,21 +1441,28 @@ export function DataProvider({ children }) {
     } else {
       notificationManager.stop();
     }
-  }, [user, preferences, isDataLoading, events, tasks]);
+  }, [isDataLoading, events, tasks]);
+
+  const updatePreferences = useCallback(async (newPreferences) => {
+    try {
+      await timelit.entities.User.updatePreferences(newPreferences);
+      setPreferences(prev => ({ ...prev, ...newPreferences }));
+      cache.invalidate('preferences');
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      throw error;
+    }
+  }, []);
 
   const value = useMemo(() => ({
-    user,
-    preferences,
     events,
     setEvents,
     tasks,
+    preferences,
     isLoading,
-    isUserLoading,
     isDataLoading,
     error,
-    refreshUser,
     refreshData,
-    updatePreferences,
     addEvent,
     bulkAddEvents,
     updateEvent,
@@ -1380,15 +1474,17 @@ export function DataProvider({ children }) {
     regenerateSchedule,
     categorizationProgress,
     triggerCategorization,
+    updatePreferences,
     undo,
     redo,
     canUndo: canUndoState,
     canRedo: canRedoState,
   }), [
-    user, preferences, events, tasks, isLoading, isUserLoading, isDataLoading, error,
-    refreshUser, refreshData, updatePreferences,
+    events, tasks, preferences, isLoading, isDataLoading, error,
+    refreshData,
     addEvent, bulkAddEvents, updateEvent, deleteEvent, deleteEventSeries,
     addTask, updateTask, deleteTask, regenerateSchedule, categorizationProgress, triggerCategorization,
+    updatePreferences,
     undo, redo, canUndoState, canRedoState,
   ]);
 

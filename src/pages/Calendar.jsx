@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +31,8 @@ import { toast } from "sonner";
 import EventDetailsModal from "../components/calendar/EventDetailsModal";
 import CreateEventModal from "../components/calendar/CreateEventModal";
 import EditEventModal from "../components/calendar/EditEventModal";
+// import SmartTaskScheduler from "./SmartTaskScheduler";
+import SmartTaskScheduler from "@/components/scheduling/SmartTaskScheduler";
 import { useCalendarDate } from "../components/providers/CalendarDateProvider";
 import {
   Tooltip,
@@ -45,7 +46,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import CalendarInsights from "../components/calendar/CalendarInsights";
 import MiniCalendar from "../components/calendar/MiniCalendar";
 
 const HOUR_HEIGHT = 48;
@@ -181,6 +181,7 @@ const EventCard = React.memo(({
 export default function CalendarPage() {
   const {
     events,
+    tasks,
     isLoading,
     error,
     deleteEvent,
@@ -189,8 +190,10 @@ export default function CalendarPage() {
     hideGoogleEvent,
     loadGoogleEventsForRange,
     preferences,
-    user,
-   } = useData();
+    updateTask,
+  } = useData();
+
+  console.log('(c) Calendar re-renders with events:', events?.length || 0);
 
   const { currentDate, setCurrentDate } = useCalendarDate();
   const [selectedEventIds, setSelectedEventIds] = useState(new Set());
@@ -291,6 +294,8 @@ export default function CalendarPage() {
   }, [isLoading, calendarView, hasScrolledRef]);
 
   const getItemsForDay = useCallback((day) => {
+    if (!day) return [];
+    
     const dayStart = new Date(day);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(day);
@@ -298,10 +303,23 @@ export default function CalendarPage() {
 
     return events.filter((event) => {
       try {
+        if (!event || !event.start_time || !event.end_time) {
+          console.warn('Invalid event structure:', event);
+          return false;
+        }
+        
         const eventStart = new Date(event.start_time);
         const eventEnd = new Date(event.end_time);
+        
+        // Check if event is valid
+        if (isNaN(eventStart.getTime()) || isNaN(eventEnd.getTime())) {
+          console.warn('Invalid event dates:', event);
+          return false;
+        }
+        
         return eventStart < dayEnd && eventEnd > dayStart;
-      } catch {
+      } catch (error) {
+        console.error('Error filtering event:', event, error);
         return false;
       }
     });
@@ -335,10 +353,10 @@ export default function CalendarPage() {
     }
     setCurrentDate(newDate);
 
-    if (calendarView === 'week' || calendarView === 'month') {
+    if (calendarView === 'month') {
       setIsFetchingMore(true);
-      const rangeStart = calendarView === 'week' ? startOfWeek(newDate) : startOfMonth(newDate);
-      const rangeEnd = calendarView === 'week' ? endOfWeek(newDate) : endOfMonth(newDate);
+      const rangeStart = startOfMonth(newDate);
+      const rangeEnd = endOfMonth(newDate);
       await loadGoogleEventsForRange(rangeStart, rangeEnd);
       setIsFetchingMore(false);
     }
@@ -366,21 +384,10 @@ export default function CalendarPage() {
     const duration = preferences?.default_event_duration || 60;
     const endTime = new Date(startTime.getTime() + duration * 60 * 1000);
 
-    try {
-      await addEvent({
-        title: "New Event",
-        start_time: startTime.toISOString(),
-        end_time: endTime.toISOString(),
-        category: preferences?.default_event_category || "personal",
-        priority: preferences?.default_event_priority || "medium",
-        description: "",
-      });
-      toast.success("New event created!");
-    } catch (error) {
-      console.error("Failed to create event:", error);
-      toast.error("Failed to create event");
-    }
-  }, [draggedEvent, resizingEvent, preferences, addEvent, calendarView]);
+    // Set the initial date for the modal
+    setIsCreateEventModalOpen(true);
+    // The modal will handle the creation with proper form validation
+  }, [draggedEvent, resizingEvent, calendarView]);
 
   const handleNewEventClick = useCallback(() => {
     setIsCreateEventModalOpen(true);
@@ -388,14 +395,32 @@ export default function CalendarPage() {
 
   const handleCreateEvent = useCallback(async (eventData) => {
     try {
-      await addEvent(eventData);
-      toast.success("Event created!");
+      const scheduler = new SmartTaskScheduler(events, tasks, preferences);
+      const result = scheduler.scheduleTask({
+        title: eventData.title,
+        description: eventData.description,
+        duration: eventData.duration || 60,
+        category: eventData.category,
+        priority: eventData.priority
+      });
+
+      if (result.success) {
+        await Promise.all([
+          ...result.newEvents.map(e => addEvent(e)),
+          updateTask(result.taskUpdate.id, result.taskUpdate)
+        ]);
+        toast.success("Event created and scheduled!");
+      } else {
+        await addEvent(eventData);
+        toast.success("Event created but could not be auto-scheduled");
+      }
+      
       setIsCreateEventModalOpen(false);
     } catch (error) {
       console.error("Failed to create event:", error);
       toast.error("Failed to create event");
     }
-  }, [addEvent]);
+  }, [addEvent, events, tasks, preferences]);
 
   const handleEventSelect = useCallback((eventId, isShiftClick) => {
     if (isShiftClick && lastSelectedEventId) {
@@ -545,11 +570,21 @@ export default function CalendarPage() {
       );
 
       if (confirmed) {
-        await updateEvent(draggedEvent.id, {
-          start_time: dragPreview.start.toISOString(),
-          end_time: dragPreview.end.toISOString(),
-        });
-        toast.success('Event moved');
+        if (draggedEvent.isTaskEvent) {
+          const taskId = draggedEvent.task_id;
+          const duration = (dragPreview.end.getTime() - dragPreview.start.getTime()) / (1000 * 60);
+          await updateTask(taskId, {
+            scheduled_start_time: dragPreview.start.toISOString(),
+            duration: Math.max(15, Math.round(duration / 15) * 15) // Snap to 15min
+          });
+          toast.success('Task schedule updated');
+        } else {
+          await updateEvent(draggedEvent.id, {
+            start_time: dragPreview.start.toISOString(),
+            end_time: dragPreview.end.toISOString(),
+          });
+          toast.success('Event moved');
+        }
       } else {
         toast.info('Move cancelled');
       }
@@ -561,7 +596,7 @@ export default function CalendarPage() {
       setDropTarget(null);
       setDragPreview(null);
     }
-  }, [draggedEvent, dragPreview, updateEvent, calendarView]);
+  }, [draggedEvent, dragPreview, updateEvent, updateTask, calendarView]);
 
   const handleResizeStart = useCallback((event, direction, mouseEvent) => {
     if (calendarView === 'month' || calendarView === 'year') return;
@@ -712,11 +747,21 @@ export default function CalendarPage() {
             );
 
             if (confirmed) {
-              await updateEvent(resizingEvent.event.id, {
-                start_time: dragPreview.start.toISOString(),
-                end_time: dragPreview.end.toISOString(),
-              });
-              toast.success('Event time updated');
+              if (resizingEvent.event.isTaskEvent) {
+                const taskId = resizingEvent.event.task_id;
+                const duration = (dragPreview.end.getTime() - dragPreview.start.getTime()) / (1000 * 60);
+                await updateTask(taskId, {
+                  scheduled_start_time: dragPreview.start.toISOString(),
+                  duration: Math.max(15, Math.round(duration / 15) * 15)
+                });
+                toast.success('Task duration updated');
+              } else {
+                await updateEvent(resizingEvent.event.id, {
+                  start_time: dragPreview.start.toISOString(),
+                  end_time: dragPreview.end.toISOString(),
+                });
+                toast.success('Event time updated');
+              }
             } else {
                 toast.info('Resize cancelled');
             }
@@ -944,63 +989,94 @@ export default function CalendarPage() {
                                     </div>
                                   )}
 
-                                  {itemsForDay
-                                    .filter((item) => {
-                                      const isCurrentlyResizing = resizingEvent && item.id === resizingEvent.event.id;
-                                      if (isCurrentlyResizing) return false;
+                                  {(() => {
+                                    // Group events by their start time to handle overlaps
+                                    const eventsInThisHour = itemsForDay
+                                      .filter((item) => {
+                                        const isCurrentlyResizing = resizingEvent && item.id === resizingEvent.event.id;
+                                        if (isCurrentlyResizing) return false;
 
-                                      const itemStart = new Date(item.start_time);
-                                      return itemStart.getHours() === hour && isSameDay(itemStart, day);
-                                    })
-                                    .map((item) => {
-                                      const startTime = new Date(item.start_time);
-                                      const endTime = new Date(item.end_time);
-                                      const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-                                      const minutesFromHour = startTime.getMinutes();
-                                      const topOffset = (minutesFromHour / 60) * HOUR_HEIGHT;
-                                      const isCurrentlyDragging = draggedEvent && item.id === draggedEvent.id;
+                                        const itemStart = new Date(item.start_time);
+                                        return itemStart.getHours() === hour && isSameDay(itemStart, day);
+                                      });
 
-                                      return (
-                                        <Tooltip key={item.id}>
-                                          <TooltipTrigger asChild>
-                                            <div
-                                              className="absolute inset-x-0 z-10"
-                                              style={{ top: `${topOffset}px` }}
-                                            >
-                                              <EventCard
-                                                event={item}
-                                                duration={Math.max(duration, 0.15)}
-                                                hourHeight={HOUR_HEIGHT}
-                                                isSelected={selectedEventIds.has(item.id)}
-                                                onSelect={handleEventSelect}
-                                                onDoubleClick={handleEventDoubleClick}
-                                                onDragStart={handleDragStart}
-                                                onDragEnd={handleDragEnd}
-                                                onResizeStart={handleResizeStart}
-                                                isDragging={isCurrentlyDragging}
-                                                preferences={preferences}
-                                              />
-                                            </div>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="right" className="bg-neutral-800 border-neutral-700">
-                                            <div className="text-xs">
-                                              <div className="font-semibold">{item.title}</div>
-                                              <div className="text-neutral-400 mt-1">
-                                                {format(startTime, 'h:mm a')} - {format(endTime, 'h:mm a')}
+                                    // Group by exact start time (minute precision)
+                                    const eventsByStartTime = new Map();
+                                    eventsInThisHour.forEach(event => {
+                                      const startTime = new Date(event.start_time);
+                                      const key = `${startTime.getHours()}:${startTime.getMinutes()}`;
+                                      if (!eventsByStartTime.has(key)) {
+                                        eventsByStartTime.set(key, []);
+                                      }
+                                      eventsByStartTime.get(key).push(event);
+                                    });
+
+                                    // Render events with stacking for overlaps
+                                    const renderedEvents = [];
+                                    eventsByStartTime.forEach((eventsAtSameTime, timeKey) => {
+                                      eventsAtSameTime.forEach((item, index) => {
+                                        const startTime = new Date(item.start_time);
+                                        const endTime = new Date(item.end_time);
+                                        const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+                                        const minutesFromHour = startTime.getMinutes();
+                                        const baseTopOffset = (minutesFromHour / 60) * HOUR_HEIGHT;
+
+                                        // Add vertical offset for overlapping events (stack them)
+                                        const overlapOffset = index * 2; // 2px vertical spacing between overlapping events
+                                        const topOffset = baseTopOffset + overlapOffset;
+
+                                        const isCurrentlyDragging = draggedEvent && item.id === draggedEvent.id;
+
+                                        renderedEvents.push(
+                                          <Tooltip key={item.id}>
+                                            <TooltipTrigger asChild>
+                                              <div
+                                                className="absolute inset-x-0 z-10"
+                                                style={{ top: `${topOffset}px` }}
+                                              >
+                                                <EventCard
+                                                  event={item}
+                                                  duration={Math.max(duration, 0.15)}
+                                                  hourHeight={HOUR_HEIGHT}
+                                                  isSelected={selectedEventIds.has(item.id)}
+                                                  onSelect={handleEventSelect}
+                                                  onDoubleClick={handleEventDoubleClick}
+                                                  onDragStart={handleDragStart}
+                                                  onDragEnd={handleDragEnd}
+                                                  onResizeStart={handleResizeStart}
+                                                  isDragging={isCurrentlyDragging}
+                                                  preferences={preferences}
+                                                />
                                               </div>
-                                              <div className="text-neutral-500 mt-0.5">
-                                                Duration: {Math.round(duration * 60)} min
-                                              </div>
-                                              {item.location && (
-                                                <div className="text-neutral-500 mt-0.5">
-                                                  📍 {item.location}
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right" className="bg-neutral-800 border-neutral-700">
+                                              <div className="text-xs">
+                                                <div className="font-semibold">{item.title}</div>
+                                                <div className="text-neutral-400 mt-1">
+                                                  {format(startTime, 'h:mm a')} - {format(endTime, 'h:mm a')}
                                                 </div>
-                                              )}
-                                            </div>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      );
-                                    })}
+                                                <div className="text-neutral-500 mt-0.5">
+                                                  Duration: {Math.round(duration * 60)} min
+                                                </div>
+                                                {item.description && (
+                                                  <div className="text-neutral-400 mt-1 italic">
+                                                    {item.description}
+                                                  </div>
+                                                )}
+                                                {item.location && (
+                                                  <div className="text-neutral-500 mt-0.5">
+                                                    📍 {item.location}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        );
+                                      });
+                                    });
+
+                                    return renderedEvents;
+                                  })()}
                                 </div>
                               );
                             })}
@@ -1200,7 +1276,8 @@ export default function CalendarPage() {
         <CreateEventModal
           isOpen={isCreateEventModalOpen}
           onClose={() => setIsCreateEventModalOpen(false)}
-          onSave={handleCreateEvent}
+          onEventCreate={handleCreateEvent}
+          initialDate={currentDate}
           preferences={preferences}
         />
       </div>

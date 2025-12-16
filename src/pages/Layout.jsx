@@ -2,13 +2,12 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Calendar, ListTodo, Settings, BarChart2 } from "lucide-react";
+import { Calendar, ListTodo, Settings, BarChart2, CalendarDays } from "lucide-react";
 import { ThemeProvider, useTheme } from "../components/providers/ThemeProvider";
 import { DataProvider } from "../components/providers/DataProvider";
 import { CalendarDateProvider, useCalendarDate } from "../components/providers/CalendarDateProvider";
 import UserNav from "../components/layout/UserNav";
 import MiniCalendar from "../components/calendar/MiniCalendar";
-import CalendarInsights from "../components/calendar/CalendarInsights";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
@@ -19,6 +18,7 @@ import TimelitLogo from "../components/ui/TimelitLogo";
 export const navigationItems = [
   { title: "Tasks", url: createPageUrl("Tasks"), icon: ListTodo },
   { title: "Calendar", url: createPageUrl("Calendar"), icon: Calendar },
+  { title: "Scheduling", url: createPageUrl("Scheduling"), icon: CalendarDays },
   { title: "Statistics", url: createPageUrl("Statistics"), icon: BarChart2 },
   { title: "Settings", url: createPageUrl("Settings"), icon: Settings },
 ];
@@ -93,7 +93,7 @@ function LayoutContent({ children, currentPageName }) {
                 display: none;
               }
             `}</style>
-            <CalendarInsights currentDate={currentDate} calendarView="week" />
+            {/* Calendar insights removed - was causing errors */}
           </div>
 
           <div className="mt-auto p-4 flex-shrink-0">

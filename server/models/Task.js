@@ -10,21 +10,18 @@ const taskSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  completed: {
-    type: Boolean,
-    default: false
+  status: {
+    type: String,
+    enum: ['todo', 'done', 'wont_do'],
+    default: 'todo'
   },
   priority: {
     type: String,
-    enum: ['low', 'medium', 'high'],
+    enum: ['low', 'medium', 'high', 'urgent'],
     default: 'medium'
   },
-  dueDate: Date,
-  estimatedDuration: {
-    type: Number, // in minutes
-    min: 0
-  },
-  actualDuration: {
+  due_date: Date,
+  duration: {
     type: Number, // in minutes
     min: 0
   },
@@ -33,16 +30,15 @@ const taskSchema = new mongoose.Schema({
     enum: ['work', 'personal', 'health', 'learning', 'other'],
     default: 'other'
   },
-  tags: [{
-    type: String,
-    trim: true,
-    lowercase: true
+  tag_ids: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Tag'
   }],
-  listId: {
+  list_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'TaskList'
   },
-  parentTask: {
+  parent_task_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Task'
   },
@@ -81,13 +77,13 @@ const taskSchema = new mongoose.Schema({
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false // Allow null for demo purposes
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  createdAt: {
+  created_date: {
     type: Date,
     default: Date.now
   },
@@ -95,22 +91,37 @@ const taskSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  completedAt: Date
+  completedAt: Date,
+  is_pinned: {
+    type: Boolean,
+    default: false
+  },
+  color: String,
+  scheduled_start_time: Date,
+  auto_scheduled: {
+    type: Boolean,
+    default: false
+  },
+  ai_suggested: {
+    type: Boolean,
+    default: false
+  },
+  order: Number
 });
 
 // Update updatedAt on save
 taskSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
-  if (this.completed && !this.completedAt) {
+  if (this.status === 'done' && !this.completedAt) {
     this.completedAt = Date.now();
   }
   next();
 });
 
 // Index for efficient queries
-taskSchema.index({ createdBy: 1, completed: 1 });
-taskSchema.index({ createdBy: 1, dueDate: 1 });
+taskSchema.index({ createdBy: 1, status: 1 });
+taskSchema.index({ createdBy: 1, due_date: 1 });
 taskSchema.index({ createdBy: 1, category: 1 });
-taskSchema.index({ listId: 1 });
+taskSchema.index({ list_id: 1 });
 
 module.exports = mongoose.model('Task', taskSchema);

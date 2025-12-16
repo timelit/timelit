@@ -1,22 +1,22 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
 const Event = require('../models/Event');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
-// All routes require authentication
 router.use(protect);
 
-// @desc    Get all events
-// @route   GET /api/events
-// @access  Private
 router.get('/', async (req, res) => {
   try {
     const { start, end, category } = req.query;
 
-    let query = { createdBy: req.user._id };
+    // Handle anonymous users - allow access to all events or filter by anonymous
+    let query = {};
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
 
-    // Filter by date range
     if (start && end) {
       query.startTime = {
         $gte: new Date(start),
@@ -24,7 +24,6 @@ router.get('/', async (req, res) => {
       };
     }
 
-    // Filter by category
     if (category) {
       query.category = category;
     }
@@ -37,23 +36,22 @@ router.get('/', async (req, res) => {
       data: events
     });
   } catch (error) {
+    logger.error('Get events error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch events'
     });
   }
 });
 
-// @desc    Get single event
-// @route   GET /api/events/:id
-// @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const event = await Event.findOne({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOne(query);
 
     if (!event) {
       return res.status(404).json({
@@ -67,22 +65,19 @@ router.get('/:id', async (req, res) => {
       data: event
     });
   } catch (error) {
+    logger.error('Get event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to fetch event'
     });
   }
 });
 
-// @desc    Create new event
-// @route   POST /api/events
-// @access  Private
 router.post('/', async (req, res) => {
   try {
     const eventData = {
       ...req.body,
-      createdBy: req.user._id
+      ...(req.user._id !== 'anonymous' && { createdBy: req.user._id })
     };
 
     const event = await Event.create(eventData);
@@ -92,21 +87,23 @@ router.post('/', async (req, res) => {
       data: event
     });
   } catch (error) {
+    logger.error('Create event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to create event'
     });
   }
 });
 
-// @desc    Update event
-// @route   PUT /api/events/:id
-// @access  Private
 router.put('/:id', async (req, res) => {
   try {
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
     const event = await Event.findOneAndUpdate(
-      { _id: req.params.id, createdBy: req.user._id },
+      query,
       req.body,
       { new: true, runValidators: true }
     );
@@ -123,23 +120,22 @@ router.put('/:id', async (req, res) => {
       data: event
     });
   } catch (error) {
+    logger.error('Update event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to update event'
     });
   }
 });
 
-// @desc    Delete event
-// @route   DELETE /api/events/:id
-// @access  Private
 router.delete('/:id', async (req, res) => {
   try {
-    const event = await Event.findOneAndDelete({
-      _id: req.params.id,
-      createdBy: req.user._id
-    });
+    const query = { _id: req.params.id };
+    if (req.user._id !== 'anonymous') {
+      query.createdBy = req.user._id;
+    }
+
+    const event = await Event.findOneAndDelete(query);
 
     if (!event) {
       return res.status(404).json({
@@ -150,20 +146,17 @@ router.delete('/:id', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {}
+      message: 'Event deleted successfully'
     });
   } catch (error) {
+    logger.error('Delete event error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to delete event'
     });
   }
 });
 
-// @desc    Bulk create events
-// @route   POST /api/events/bulk
-// @access  Private
 router.post('/bulk', async (req, res) => {
   try {
     const { events } = req.body;
@@ -177,7 +170,7 @@ router.post('/bulk', async (req, res) => {
 
     const eventsWithUser = events.map(event => ({
       ...event,
-      createdBy: req.user._id
+      ...(req.user._id !== 'anonymous' && { createdBy: req.user._id })
     }));
 
     const createdEvents = await Event.insertMany(eventsWithUser);
@@ -188,10 +181,10 @@ router.post('/bulk', async (req, res) => {
       data: createdEvents
     });
   } catch (error) {
+    logger.error('Bulk create events error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      message: 'Failed to create events'
     });
   }
 });

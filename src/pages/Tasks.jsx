@@ -1,12 +1,12 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Inbox, CalendarDays, Calendar, List, Tag, CheckCircle2, Trash2, ChevronDown, ChevronRight, MoreHorizontal, ListTodo, X, Check, AlertCircle, CalendarX } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useData } from "../components/providers/DataProvider";
-import { base44 } from "@/api/base44Client";
+import { timelit } from "@/api/timelitClient";
 import TaskItem from "../components/tasks/TaskItem";
 import { startOfToday, endOfToday, addDays, endOfDay, parseISO, isWithinInterval, isPast, isBefore } from "date-fns";
 import {
@@ -48,7 +48,7 @@ const TaskSidebarItem = ({ icon: Icon, label, count, isActive, onClick, color })
 
 export default function TasksPage() {
   // NEW: Added updatePreferences to useData destructuring
-  const { user, tasks, isLoading, error, addTask, updateTask, deleteTask, preferences, updatePreferences } = useData();
+  const { tasks, isLoading, error, addTask, updateTask, deleteTask, preferences, updatePreferences } = useData();
 
   const [activeView, setActiveView] = useState('inbox');
   const [selectedListId, setSelectedListId] = useState(null);
@@ -72,6 +72,9 @@ export default function TasksPage() {
   // NEW: State for notes section
   const [notes, setNotes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  // Prevent same-tick double submit from Enter bubbling and form submit race
+  const quickAddSubmittingRef = useRef(false);
 
   // NEW: Load notes from preferences on initial render
   useEffect(() => {
@@ -110,11 +113,10 @@ export default function TasksPage() {
   // Load lists and tags
   useEffect(() => {
     const loadListsAndTags = async () => {
-      if (!user) return;
       try {
         const [listsData, tagsData] = await Promise.all([
-          base44.entities.TaskList.filter({ created_by: user.email }),
-          base44.entities.TaskTag.filter({ created_by: user.email })
+          timelit.entities.TaskList.filter({}),
+          timelit.entities.TaskTag.filter({})
         ]);
         setLists(listsData || []);
         setTags(tagsData || []);
@@ -123,7 +125,7 @@ export default function TasksPage() {
       }
     };
     loadListsAndTags();
-  }, [user]);
+  }, []);
 
   // Optimized filter tasks - REMOVED overdue and no_due_date cases
   const filteredTasks = useMemo(() => {
@@ -242,9 +244,12 @@ export default function TasksPage() {
   const handleQuickAdd = async (e) => {
     e.preventDefault();
     if (!quickAddValue.trim()) return;
+    if (quickAddSubmittingRef.current || isAddingTask) return;
 
+    quickAddSubmittingRef.current = true;
+    setIsAddingTask(true);
     const titleToAdd = quickAddValue.trim();
-    setQuickAddValue("");
+    setQuickAddValue(""); // Clear immediately on submit
 
     const taskData = {
       title: titleToAdd,
@@ -263,17 +268,19 @@ export default function TasksPage() {
     } catch (error) {
       console.error("Error adding task:", error);
       toast.error("Failed to add task");
-      setQuickAddValue(titleToAdd);
+      setQuickAddValue(titleToAdd); // Restore on error
+    } finally {
+      setIsAddingTask(false);
+      quickAddSubmittingRef.current = false;
     }
   };
 
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     try {
-      const newList = await base44.entities.TaskList.create({
+      const newList = await timelit.entities.TaskList.create({
         name: newListName,
-        color: '#3b82f6',
-        created_by: user.email
+        color: '#3b82f6'
       });
       setLists([...lists, newList]);
       setNewListName("");
@@ -288,10 +295,9 @@ export default function TasksPage() {
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
     try {
-      const newTag = await base44.entities.TaskTag.create({
+      const newTag = await timelit.entities.TaskTag.create({
         name: newTagName,
-        color: '#8b5cf6',
-        created_by: user.email
+        color: '#8b5cf6'
       });
       setTags([...tags, newTag]);
       setNewTagName("");
@@ -306,7 +312,7 @@ export default function TasksPage() {
   const handleDeleteList = async (listId) => {
     if (!window.confirm("Are you sure you want to delete this list? Tasks associated with this list will NOT be deleted, but will become unassigned.")) return;
     try {
-      await base44.entities.TaskList.delete(listId);
+      await timelit.entities.TaskList.delete(listId);
       setLists(lists.filter(l => l.id !== listId));
       if (selectedListId === listId) {
         setActiveView('inbox');
@@ -322,7 +328,7 @@ export default function TasksPage() {
   const handleDeleteTag = async (tagId) => {
     if (!window.confirm("Are you sure you want to delete this tag? Tasks associated with this tag will NOT be deleted, but will become untagged.")) return;
     try {
-      await base44.entities.TaskTag.delete(tagId);
+      await timelit.entities.TaskTag.delete(tagId);
       setTags(tags.filter(t => t.id !== tagId));
       if (selectedTagId === tagId) {
         setActiveView('inbox');
@@ -781,6 +787,7 @@ export default function TasksPage() {
               placeholder="Add a task..."
               className="w-full bg-neutral-800/50 border-neutral-700/50 text-base pl-10 h-12 rounded-lg hover:bg-neutral-800 hover:border-neutral-600/50 transition-all"
               autoComplete="off"
+              disabled={isAddingTask}
             />
             <Plus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
           </form>

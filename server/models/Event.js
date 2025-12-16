@@ -80,10 +80,14 @@ const eventSchema = new mongoose.Schema({
     }
   }],
   googleEventId: String,
+  task_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Task'
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false // Allow null for demo purposes
   },
   createdAt: {
     type: Date,
